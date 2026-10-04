@@ -196,7 +196,8 @@ function renderMessages(conv) {
     const mine = m.senderId === me.id;
     const li = el("li", `msg ${mine ? "mine" : ""} ${m.status}`);
     if (!mine && conv.type === "group") li.append(el("span", "sender", names.get(m.senderId) ?? m.senderId));
-    li.append(el("p", m.deletedAt ? "text deleted" : "text", m.deletedAt ? "Message deleted" : (m.text ?? "")));
+    if (m.deletedAt || m.text) li.append(el("p", m.deletedAt ? "text deleted" : "text", m.deletedAt ? "Message deleted" : m.text));
+    if (!m.deletedAt) for (const a of m.attachments) li.append(attachmentEl(a));
     const meta = el("span", "meta muted");
     meta.append(m.status === "sent" ? time(m.createdAt) : m.status);
     if (m.editedAt && !m.deletedAt) meta.append(" · edited");
@@ -225,6 +226,44 @@ function renderMessages(conv) {
   ol.replaceChildren(...items);
   if (atBottom) ol.scrollTop = ol.scrollHeight;
 }
+
+// Attachments: links are short-lived, so fetch one when rendering (cached for 4 minutes).
+const links = new Map();
+function attachmentEl(a) {
+  const isImage = a.mimeType.startsWith("image/");
+  const node = isImage ? el("img", "file") : el("a", "file", `📄 ${a.name} (${Math.ceil(a.size / 1024)} KB)`);
+  if (isImage) node.alt = a.name;
+  const hit = links.get(a.id);
+  const apply = (url) => (isImage ? (node.src = url) : ((node.href = url), (node.target = "_blank")));
+  if (hit && hit.until > Date.now()) apply(hit.url);
+  else
+    chat.attachments.url(a.id, 300).then(
+      ({ url }) => {
+        links.set(a.id, { url, until: Date.now() + 240_000 });
+        apply(url);
+      },
+      (err) => showError($("chat-error"), err),
+    );
+  return node;
+}
+
+$("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file || !current) return;
+  const status = $("upload");
+  status.hidden = false;
+  status.textContent = `Uploading ${file.name}…`;
+  try {
+    const att = await current.upload(file, { onProgress: (p) => (status.textContent = `Uploading ${file.name}… ${Math.round(p * 100)}%`) });
+    await current.send({ text: $("text").value.trim() || undefined, attachments: [att] });
+    $("text").value = "";
+    status.hidden = true;
+  } catch (err) {
+    status.hidden = true;
+    showError($("chat-error"), err); // e.g. storage_unavailable when no media storage is configured
+  }
+});
 
 $("older").addEventListener("click", async () => {
   if (!current) return;

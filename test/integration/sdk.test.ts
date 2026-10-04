@@ -202,6 +202,10 @@ describe("ephemeral signals", () => {
     const dm = await alice.conversations.direct("erin");
     await dm.send({ text: "ping erin" });
     await waitFor(() => latest.find((c) => c.id === dm.id && c.unreadCount >= 1));
+    // Reading the conversation clears the badge in the live list.
+    const opened = await erin.conversations.get(dm.id);
+    await opened.markRead();
+    await waitFor(() => latest.find((c) => c.id === dm.id && c.unreadCount === 0));
   });
 });
 

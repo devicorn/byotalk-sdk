@@ -52,9 +52,11 @@
           <ol id="messages" class="messages"></ol>
           <div id="typing" class="typing muted"></div>
           <form id="composer" class="composer">
+            <label class="attach" title="Attach a file">📎<input id="file" type="file" hidden /></label>
             <input id="text" placeholder="Message" autocomplete="off" aria-label="Message" />
             <button type="submit">Send</button>
           </form>
+          <div id="upload" class="muted upload" hidden></div>
           <p id="chat-error" class="error" role="alert"></p>
         </div>
       </section>

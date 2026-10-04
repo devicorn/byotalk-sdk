@@ -369,6 +369,14 @@ export class Chat {
     this.notifySummaries();
   }
 
+  /** Internal: the user read a conversation up to `seq`; clear its badge in conversations.watch(). */
+  noteRead(cid: string, seq: number) {
+    const s = this.summaries.get(cid);
+    if (!s) return;
+    this.summaries.set(cid, { ...s, unreadCount: seq >= s.lastSeq ? 0 : s.unreadCount, lastReadSeq: Math.max(s.lastReadSeq, seq) });
+    this.notifySummaries();
+  }
+
   private notifySummaries() {
     if (!this.summaryWatchers.size) return;
     const list = [...this.summaries.values()].sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1));

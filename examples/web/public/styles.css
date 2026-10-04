@@ -81,3 +81,9 @@ input:focus, button:focus-visible { outline: 2px solid var(--brand); outline-off
   .chat { height: 55vh; }
   .msg { max-width: 85%; }
 }
+
+.attach { cursor: pointer; display: grid; place-items: center; padding: 0 6px; font-size: 18px; }
+.upload { padding: 0 18px 8px; }
+.msg .file { display: block; margin-top: 4px; }
+.msg img.file { max-width: 260px; max-height: 220px; border-radius: 10px; }
+.msg.mine a.file { color: #fff; }

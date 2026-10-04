@@ -186,6 +186,7 @@ export class Conversation {
     this.unreadCount = 0;
     if (this.chat.transport.isOpen) await this.chat.transport.request("read", { cid: this.id, seq: target });
     else await this.chat.rest.request("POST", `/v1/conversations/${this.id}/read`, { body: { seq: target } });
+    this.chat.noteRead(this.id, target);
   }
 
   /** Call on every keystroke; sends at most one `typing start` per 3 s. */
