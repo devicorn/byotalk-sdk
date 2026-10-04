@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
+import globals from "globals";
 
 export default tseslint.config(
   { ignores: ["dist", "node_modules"] },
@@ -21,5 +22,6 @@ export default tseslint.config(
     },
   },
   { files: ["test/**/*.ts"], rules: { "@typescript-eslint/no-explicit-any": "off" } },
-  { files: ["scripts/**/*.mjs"], languageOptions: { globals: { console: "readonly", process: "readonly", URL: "readonly" } } },
+  { files: ["scripts/**/*.mjs", "examples/**/server.mjs"], languageOptions: { globals: globals.node } },
+  { files: ["examples/**/public/**/*.js"], languageOptions: { globals: globals.browser } },
 );
