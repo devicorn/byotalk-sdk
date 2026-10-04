@@ -114,11 +114,24 @@ export class Transport extends Emitter {
   }
 
   private watchOnline() {
-    const g = globalThis as { addEventListener?: (e: string, cb: () => void) => void; removeEventListener?: (e: string, cb: () => void) => void };
+    const g = globalThis as { addEventListener?: (e: string, cb: (ev?: { persisted?: boolean }) => void) => void; removeEventListener?: (e: string, cb: () => void) => void };
     if (typeof g.addEventListener !== "function") return;
-    const cb = () => this.reconnectNow();
-    g.addEventListener("online", cb);
-    this.detachOnline = () => g.removeEventListener?.("online", cb);
+    const online = () => this.reconnectNow();
+    // Leaving the page: close cleanly so the server marks the user offline at once instead of after a grace period.
+    const pagehide = () => {
+      const ws = this.ws;
+      if (ws && ws.readyState === OPEN) ws.close(1000, "page closed");
+    };
+    // Back from the back/forward cache: the socket was closed on pagehide, reconnect now.
+    const pageshow = (ev?: { persisted?: boolean }) => ev?.persisted && this.reconnectNow();
+    g.addEventListener("online", online);
+    g.addEventListener("pagehide", pagehide);
+    g.addEventListener("pageshow", pageshow);
+    this.detachOnline = () => {
+      g.removeEventListener?.("online", online);
+      g.removeEventListener?.("pagehide", pagehide);
+      g.removeEventListener?.("pageshow", pageshow as () => void);
+    };
   }
 
   private async open() {
