@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm size
+      # Protocol conformance against the latest server image (see byotalk-server/docs/08 §12).
+      - name: Start byotalk-server
+        run: |
+          docker run -d --name byotalk --network host \
+            -e NODE_ENV=development -e DATABASE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres \
+            -e DATABASE_URL=postgres://app_rw:app_rw@localhost:5432/postgres \
+            -e DATABASE_PIPELINE_URL=postgres://app_pipeline:app_pipeline@localhost:5432/postgres \
+            -e REDIS_URL=redis://localhost:6379 -e BYOTALK_MASTER_KEY=${{ secrets.TEST_MASTER_KEY }} \
+            -e EGRESS_ALLOW_PRIVATE=true -e RATE_LIMIT_SCALE=20 \
+            ghcr.io/${{ github.repository_owner }}/byotalk-server:latest all
+          for i in $(seq 1 30); do curl -sf localhost:3000/readyz && break; sleep 2; done
+      - run: pnpm test:integration

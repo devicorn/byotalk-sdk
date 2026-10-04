@@ -1,0 +1,87 @@
+{
+  "name": "byotalk",
+  "version": "0.1.0",
+  "description": "ByoTalk chat SDK: realtime client for web, React Native and Node, server helpers and the db migrate CLI.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "require": "./dist/server.cjs"
+    },
+    "./react-native": {
+      "types": "./dist/react-native.d.ts",
+      "import": "./dist/react-native.js",
+      "require": "./dist/react-native.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "byotalk": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "test:conformance": "vitest run test/integration",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "size": "node scripts/size.mjs",
+    "sync-schema": "node scripts/sync-schema.mjs",
+    "changeset": "changeset"
+  },
+  "optionalDependencies": {
+    "pg": "^8.23.1"
+  },
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": ">=1.19",
+    "@react-native-community/netinfo": ">=11",
+    "react-native": ">=0.72",
+    "react-native-mmkv": ">=2.10"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    },
+    "@react-native-community/netinfo": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    },
+    "react-native-mmkv": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.3",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "esbuild": "^0.27.7",
+    "eslint": "^10.12.0",
+    "tsup": "^8.5.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3"
+  },
+  "packageManager": "pnpm@11.9.0"
+}
