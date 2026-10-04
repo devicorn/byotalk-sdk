@@ -17,6 +17,6 @@ export default defineConfig([
     platform: "node",
     target: "node22",
     banner: { js: "#!/usr/bin/env node" },
-    external: ["pg"],
+    external: ["pg", "mysql2", "mysql2/promise", "mongodb"],
   },
 ]);

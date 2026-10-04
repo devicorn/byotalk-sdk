@@ -49,6 +49,8 @@
     "changeset": "changeset"
   },
   "optionalDependencies": {
+    "mongodb": "^7.7.0",
+    "mysql2": "^3.24.5",
     "pg": "^8.23.1"
   },
   "peerDependencies": {

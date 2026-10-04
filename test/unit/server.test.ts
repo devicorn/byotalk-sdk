@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { ChatServer, WebhookVerificationError } from "../../src/server/index.js";
-import { migrationSql } from "../../src/cli/index.js";
+import { detectEngine, migrationSql, mysqlStatements } from "../../src/cli/index.js";
 
 const secret = "sk_test_abcdefghijklmnopqrstuvwxyz012345";
 
@@ -40,5 +40,22 @@ describe("CLI migration SQL", () => {
     expect(sql).toContain('GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA "byotalk" TO "byotalk_writer"');
     expect(sql).not.toMatch(/GRANT[^;]*DELETE/);
     expect(migrationSql("chat", null, null)).not.toContain("ROLE");
+  });
+});
+
+describe("CLI engines", () => {
+  it("detects the engine from the URL", () => {
+    expect(detectEngine("postgres://u@h/db")).toBe("postgres");
+    expect(detectEngine("mysql://u@h/db")).toBe("mysql");
+    expect(detectEngine("mariadb://u@h/db")).toBe("mysql");
+    expect(detectEngine("mongodb+srv://u@cluster.example.net/db")).toBe("mongodb");
+    expect(detectEngine("sqlserver://x")).toBeNull();
+  });
+
+  it("MySQL statements use the prefix and never grant DELETE", () => {
+    const stmts = mysqlStatements("chat");
+    expect(stmts).toHaveLength(6);
+    expect(stmts.join("\n")).toContain("CREATE TABLE IF NOT EXISTS chat_messages");
+    expect(stmts.join("\n")).not.toMatch(/__P__|DELETE/);
   });
 });

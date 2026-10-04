@@ -487,6 +487,14 @@ export class Chat {
     }
   }
 
+  // ------------------------------------------------------------------ attachments
+
+  readonly attachments = {
+    /** Short-lived download link for an attachment you can see (default 5 minutes, 60–3600 s). */
+    url: (attachmentId: string, expiresIn?: number): Promise<{ url: string; expiresAt: string }> =>
+      this.rest.request("GET", `/v1/attachments/${encodeURIComponent(attachmentId)}/url`, { query: { expiresIn } }),
+  };
+
   // ------------------------------------------------------------------ push
 
   readonly push = {

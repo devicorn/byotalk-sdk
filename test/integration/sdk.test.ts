@@ -9,6 +9,7 @@ const RT = process.env.BYOTALK_RT_URL ?? "ws://localhost:3001";
 let devEnv: string;
 let prodEnv: string;
 let prodKey: string;
+let dashHeaders: Record<string, string>;
 const chats: Chat[] = [];
 
 async function json(res: Response) {
@@ -25,6 +26,7 @@ async function setup() {
   const verify = await fetch(`${API}/v1/auth/verify`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
   const cookie = verify.headers.get("set-cookie")!.split(";")[0]!;
   const h = { cookie, "x-byotalk-dashboard": "1", "content-type": "application/json" };
+  dashHeaders = { cookie, "x-byotalk-dashboard": "1" };
   const me = await json(await fetch(`${API}/v1/auth/me`, { headers: h }));
   const project = await json(await fetch(`${API}/v1/dashboard/orgs/${me.orgs[0].id}/projects`, { method: "POST", headers: h, body: JSON.stringify({ name: "SDK tests" }) }));
   devEnv = project.environments.find((e: { kind: string }) => e.kind === "development").id;
@@ -250,5 +252,40 @@ describe("production auth with the server SDK", () => {
     await expect(client.connect()).rejects.toBeInstanceOf(ChatError);
     expect(client.connectionState).toBe("failed");
     expect(errors[0]!.code).toBe("dev_tokens_disabled");
+  });
+});
+
+describe("attachments on the customer's own storage (S3-compatible via MinIO)", () => {
+  it("conversation.upload → send → chat.attachments.url → download", async (t) => {
+    const endpoint = process.env.TEST_S3_ENDPOINT ?? "http://127.0.0.1:9000";
+    try {
+      await fetch(`${endpoint}/minio/health/live`, { signal: AbortSignal.timeout(1500) });
+    } catch {
+      return t.skip();
+    }
+    const server = new ChatServer({ secretKey: prodKey, baseUrl: API });
+    const conv = (await server.conversations.create({ type: "group", name: "Files", members: ["uploader", "viewer"] })) as { id: string };
+    // Point production media at the local S3 (the server tests create the bucket).
+    const res = await fetch(`${API}/v1/storage/media`, {
+      method: "PUT",
+      headers: { ...dashHeaders, "byotalk-env": prodEnv, "content-type": "application/json" },
+      body: JSON.stringify({ provider: "s3", preset: "minio", endpoint, region: "us-east-1", bucket: "byotalk-test", accessKeyId: "minioadmin", secretAccessKey: "minioadmin", prefix: "sdk" }),
+    });
+    const media = await res.json();
+    if (!media.ok) return t.skip(); // bucket missing: run the server media tests first
+    const client = new Chat({ env: prodEnv, token: async () => server.createToken("uploader"), baseUrl: API, realtimeUrl: RT });
+    chats.push(client);
+    await client.connect();
+    const c = await client.conversations.get(conv.id);
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+    const progress: number[] = [];
+    const att = await c.upload(new File([png], "pixel.png", { type: "image/png" }), { onProgress: (p) => progress.push(p) });
+    expect(att).toMatchObject({ name: "pixel.png", size: png.length, mimeType: "image/png" });
+    const sent = await c.send({ text: "file", attachments: [att] });
+    expect(sent.status).toBe("sent");
+    const link = await client.attachments.url(att.id, 120);
+    const file = new Uint8Array(await (await fetch(link.url)).arrayBuffer());
+    expect(Array.from(file)).toEqual(Array.from(png));
+    expect(progress.at(-1)).toBe(1);
   });
 });

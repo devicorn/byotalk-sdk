@@ -5,7 +5,8 @@ import type { Attachment, UploadInput } from "./types.js";
 
 interface UploadTicket {
   attachmentId: string;
-  upload: { method: "POST"; url: string; fields: Record<string, string> };
+  /** POST + fields: multipart form (Cloudinary). PUT + headers: raw body (S3-compatible, Azure Blob). */
+  upload: { method: "POST" | "PUT"; url: string; fields?: Record<string, string>; headers?: Record<string, string> };
 }
 
 const isBlob = (f: UploadInput): f is Blob => typeof Blob !== "undefined" && f instanceof Blob;
@@ -21,11 +22,17 @@ export class Uploader {
       body: { conversationId, filename: name, size, contentType: type },
       signal: opts.signal,
     });
-    const form = new FormData();
-    for (const [k, v] of Object.entries(ticket.upload.fields)) form.append(k, v);
-    // React Native's FormData accepts { uri, name, type } objects.
-    form.append("file", file as Blob, name);
-    await post(ticket.upload.url, form, opts);
+    if (ticket.upload.method === "PUT") {
+      // React Native: read the file:// or content:// URI into a Blob first.
+      const body = isBlob(file) ? file : await (await fetch(file.uri)).blob();
+      await send("PUT", ticket.upload.url, body, ticket.upload.headers ?? {}, opts);
+    } else {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(ticket.upload.fields ?? {})) form.append(k, v);
+      // React Native's FormData accepts { uri, name, type } objects.
+      form.append("file", file as Blob, name);
+      await send("POST", ticket.upload.url, form, {}, opts);
+    }
     opts.onProgress?.(1);
     return this.rest.request<Attachment>("POST", `/v1/uploads/${ticket.attachmentId}/complete`, { signal: opts.signal });
   }
@@ -41,20 +48,27 @@ async function sizeOfUri(uri: string): Promise<number> {
 }
 
 /** XHR when available (upload progress), fetch otherwise. */
-function post(url: string, form: FormData, opts: { onProgress?: (p: number) => void; signal?: AbortSignal }): Promise<void> {
+function send(
+  method: "POST" | "PUT",
+  url: string,
+  body: FormData | Blob,
+  headers: Record<string, string>,
+  opts: { onProgress?: (p: number) => void; signal?: AbortSignal },
+): Promise<void> {
   const XHR = (globalThis as { XMLHttpRequest?: typeof XMLHttpRequest }).XMLHttpRequest;
   if (XHR && opts.onProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XHR();
-      xhr.open("POST", url);
+      xhr.open(method, url);
+      for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
       xhr.upload.onprogress = (e) => e.lengthComputable && opts.onProgress!(e.loaded / e.total);
       xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(uploadError(xhr.status)));
       xhr.onerror = () => reject(new ChatError({ code: "storage_unavailable", type: "unavailable", message: "Upload failed" }));
       opts.signal?.addEventListener("abort", () => xhr.abort());
-      xhr.send(form);
+      xhr.send(body);
     });
   }
-  return fetch(url, { method: "POST", body: form, signal: opts.signal }).then((res) => {
+  return fetch(url, { method, body, headers, signal: opts.signal }).then((res) => {
     if (!res.ok) throw uploadError(res.status);
   });
 }
