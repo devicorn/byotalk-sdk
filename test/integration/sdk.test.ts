@@ -183,12 +183,16 @@ describe("ephemeral signals", () => {
     await bobDm.markRead();
     await waitFor(() => dm.readBy(m.seq!).includes("bob"));
 
+    // Presence is only shared between users who have a conversation together: dora has one with alice, zed doesn't.
+    await alice.conversations.direct("dora");
     const seen: { userId: string; online: boolean }[] = [];
-    const stop = alice.presence.watch(["dora"], (p) => seen.push(p));
+    const stop = alice.presence.watch(["dora", "zed"], (p) => seen.push(p));
     await waitFor(() => seen.find((p) => p.userId === "dora" && !p.online));
-    const dora = chat("dora");
-    await dora.connect();
+    const [dora, zed] = [chat("dora"), chat("zed")];
+    await Promise.all([dora.connect(), zed.connect()]);
     await waitFor(() => seen.find((p) => p.userId === "dora" && p.online));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(seen.some((p) => p.userId === "zed")).toBe(false);
     stop();
   });
 

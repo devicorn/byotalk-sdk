@@ -176,9 +176,21 @@ test("signaling drop: the call reconnects and media flows again", async ({ brows
   await startCall(kim, ["leo"]);
   await accept(leo);
   await Promise.all([waitConnected(kim), waitConnected(leo)]);
+  await remoteVideos(leo, 1);
+  const videoId = () => (window as any).call.participants.find((p: any) => !p.isLocal && p.videoTrack)?.videoTrack.id ?? null;
+  const before = await leo.evaluate(videoId);
   await kim.evaluate(() => (window as any).call.sig.ws.close(4999, "test drop"));
   await kim.waitForFunction(() => (window as any).call.state === "reconnecting");
   await waitConnected(kim);
+  // kim rejoined with a new session: leo's old track of kim goes away and a new one arrives.
+  await leo.waitForFunction(
+    (old) => {
+      const id = (window as any).call.participants.find((p: any) => !p.isLocal && p.videoTrack)?.videoTrack.id;
+      return id && id !== old;
+    },
+    before,
+    { timeout: 15_000 },
+  );
   expect((await remoteVideos(kim, 1))[0]!.w).toBeGreaterThan(0);
   expect((await remoteVideos(leo, 1))[0]!.w).toBeGreaterThan(0);
   expect((await flowing(leo)).audio).toBeGreaterThan(1000);
