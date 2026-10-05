@@ -347,7 +347,8 @@ function messageEl(conv, m, first) {
     actions.append(edit, del);
     li.append(actions);
   }
-  if (!mine) void nameOf(m.senderId);
+  // Names load lazily: re-render once a sender's name arrives.
+  if (!mine && !names.has(m.senderId)) void nameOf(m.senderId).then(() => renderMessages(conv));
   return li;
 }
 
