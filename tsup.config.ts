@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 
 export default defineConfig([
   {
-    entry: { index: "src/core/index.ts", server: "src/server/index.ts", "react-native": "src/react-native/index.ts" },
+    entry: { index: "src/core/index.ts", server: "src/server/index.ts", "react-native": "src/react-native/index.ts", calls: "src/calls/index.ts" },
     format: ["esm", "cjs"],
     dts: true,
     sourcemap: true,

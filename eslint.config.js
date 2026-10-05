@@ -22,6 +22,6 @@ export default tseslint.config(
     },
   },
   { files: ["test/**/*.ts"], rules: { "@typescript-eslint/no-explicit-any": "off" } },
-  { files: ["scripts/**/*.mjs", "examples/**/server.mjs"], languageOptions: { globals: globals.node } },
+  { files: ["scripts/**/*.mjs", "examples/**/server.mjs", "test/**/*.mjs"], languageOptions: { globals: globals.node } },
   { files: ["examples/**/public/**/*.js"], languageOptions: { globals: globals.browser } },
 );
