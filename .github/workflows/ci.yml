@@ -38,7 +38,15 @@ jobs:
             -e DATABASE_URL=postgres://app_rw:app_rw@localhost:5432/postgres \
             -e DATABASE_PIPELINE_URL=postgres://app_pipeline:app_pipeline@localhost:5432/postgres \
             -e REDIS_URL=redis://localhost:6379 -e BYOTALK_MASTER_KEY=${{ secrets.TEST_MASTER_KEY }} \
-            -e EGRESS_ALLOW_PRIVATE=true -e RATE_LIMIT_SCALE=20 \
-            ghcr.io/${{ github.repository_owner }}/byotalk-server:latest all
-          for i in $(seq 1 30); do curl -sf localhost:3000/readyz && break; sleep 2; done
+            -e EGRESS_ALLOW_PRIVATE=true -e RATE_LIMIT_SCALE=20 -e MIGRATE_ON_START=true \
+            -e MEDIA_PUBLIC_URL=ws://localhost:3003 -e MEDIA_ANNOUNCED_IP=127.0.0.1 -e MEDIA_WORKERS=1 \
+            -e TURN_URLS="turn:127.0.0.1:3478?transport=udp,turn:127.0.0.1:3478?transport=tcp" -e TURN_SECRET=ci-turn-secret \
+            ghcr.io/${{ github.repository_owner }}/byotalk-server:latest node dist/roles/all.js
+          docker run -d --name coturn --network host coturn/coturn:4.6 -n --listening-ip=127.0.0.1 --listening-port=3478 \
+            --relay-ip=127.0.0.1 --min-port=49160 --max-port=49260 --realm=ci --use-auth-secret \
+            --static-auth-secret=ci-turn-secret --allow-loopback-peers --no-cli --no-tls --no-dtls --fingerprint
+          for i in $(seq 1 30); do curl -sf localhost:3000/readyz && curl -sf localhost:3003/healthz && break; sleep 2; done
       - run: pnpm test:integration
+      # Real WebRTC calls in Chromium (fake camera/microphone) through the media node and coturn.
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:browser
