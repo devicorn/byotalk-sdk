@@ -2,97 +2,167 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#4f46e5" />
     <title>ByoTalk example chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
     <!-- byotalk/calls imports mediasoup-client; a bundler resolves it in real apps, here the server bundles it. -->
     <script type="importmap">{ "imports": { "mediasoup-client": "/sdk/mediasoup-client.js" } }</script>
   </head>
   <body>
+    <!-- ------------------------------------------------------------ sign in -->
     <main id="login" class="login">
-      <form id="login-form" class="card">
-        <h1>ByoTalk example chat</h1>
-        <p class="muted">Sign in as any user. Open a second browser window as another user to chat.</p>
-        <label>User id <input name="userId" required pattern="[A-Za-z0-9_\-@.:]{1,128}" placeholder="alice" autocomplete="off" /></label>
-        <label>Display name <input name="name" placeholder="Alice" autocomplete="off" /></label>
-        <button type="submit">Sign in</button>
+      <section class="login-hero" aria-hidden="true">
+        <div class="logo-mark big" data-icon="message" data-size="34"></div>
+        <h2>Chat, voice and video — on your own data.</h2>
+        <ul>
+          <li><span data-icon="message" data-size="18"></span> Realtime messages, receipts, typing, presence</li>
+          <li><span data-icon="video" data-size="18"></span> 1:1 and group voice &amp; video calls</li>
+          <li><span data-icon="screen" data-size="18"></span> Screen sharing, files, offline sending</li>
+        </ul>
+      </section>
+      <form id="login-form" class="login-card">
+        <div class="brand"><span class="logo-mark" data-icon="message" data-size="20"></span><strong>ByoTalk</strong><span class="pill">example</span></div>
+        <h1>Sign in</h1>
+        <p class="muted">Pick any user id. Open a second (private) window as another user to chat and call.</p>
+        <label class="field">
+          <span>User id</span>
+          <input name="userId" required pattern="[A-Za-z0-9_\-@.:]{1,128}" placeholder="alice" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Display name <em class="muted">(optional)</em></span>
+          <input name="name" placeholder="Alice" autocomplete="off" />
+        </label>
+        <div class="quick" aria-label="Quick sign in">
+          <span class="muted">Quick:</span>
+          <button type="button" class="chip" data-user="alice">alice</button>
+          <button type="button" class="chip" data-user="bob">bob</button>
+          <button type="button" class="chip" data-user="carol">carol</button>
+        </div>
+        <button type="submit" class="btn primary block">Continue</button>
         <p id="login-error" class="error" role="alert"></p>
       </form>
     </main>
 
-    <div id="app" class="app" hidden>
-      <aside class="sidebar">
-        <header class="me">
-          <div>
-            <strong id="me-name"></strong>
-            <span id="conn" class="badge">connecting</span>
+    <!-- ------------------------------------------------------------ app -->
+    <div id="app" class="app" data-view="list" hidden>
+      <aside class="sidebar" aria-label="Conversations">
+        <header class="side-head">
+          <div class="me">
+            <span id="me-avatar"></span>
+            <div class="me-text">
+              <strong id="me-name"></strong>
+              <span id="conn" class="conn"><i></i><b>connecting</b></span>
+            </div>
           </div>
-          <button id="logout" class="link">Sign out</button>
+          <div class="head-actions">
+            <button id="new-toggle" class="icon-btn" title="New chat" aria-label="New chat" aria-expanded="false" data-icon="plus"></button>
+            <button id="logout" class="icon-btn" title="Sign out" aria-label="Sign out" data-icon="logout"></button>
+          </div>
         </header>
-        <form id="new-dm" class="new-chat">
-          <input name="userId" placeholder="Chat with user id…" required aria-label="User id to chat with" autocomplete="off" />
-          <button type="submit">Chat</button>
-        </form>
-        <form id="new-group" class="new-chat">
-          <input name="name" placeholder="Group name" required aria-label="Group name" autocomplete="off" />
-          <input name="members" placeholder="user ids, comma separated" required aria-label="Group members" autocomplete="off" />
-          <button type="submit">New group</button>
-        </form>
-        <ul id="conversations" class="conversations" aria-label="Conversations"></ul>
+
+        <div id="new-panel" class="new-panel" hidden>
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" class="tab" aria-selected="true" data-tab="dm">Direct</button>
+            <button type="button" role="tab" class="tab" aria-selected="false" data-tab="group">Group</button>
+          </div>
+          <form id="new-dm" class="new-form">
+            <input name="userId" placeholder="User id, e.g. bob" required aria-label="User id to chat with" autocomplete="off" />
+            <button type="submit" class="btn primary">Start chat</button>
+          </form>
+          <form id="new-group" class="new-form" hidden>
+            <input name="name" placeholder="Group name" required aria-label="Group name" autocomplete="off" />
+            <input name="members" placeholder="Members: bob, carol" required aria-label="Group members" autocomplete="off" />
+            <button type="submit" class="btn primary">Create group</button>
+          </form>
+        </div>
+
+        <label class="search">
+          <span data-icon="search" data-size="16"></span>
+          <input id="search" type="search" placeholder="Search chats" aria-label="Search chats" autocomplete="off" />
+        </label>
+        <ul id="conversations" class="conversations"></ul>
+        <p id="no-convs" class="side-empty muted" hidden>No chats yet. Tap <b>+</b> to start one.</p>
       </aside>
 
-      <section class="thread" aria-live="polite">
-        <div id="empty" class="empty">Pick a conversation or start a new chat.</div>
+      <section class="thread">
+        <div id="empty" class="empty">
+          <div class="empty-art" data-icon="message" data-size="40"></div>
+          <h2>Your messages</h2>
+          <p class="muted">Pick a chat on the left, or start a new one with <b>+</b>.</p>
+        </div>
+
         <div id="chat" class="chat" hidden>
           <header class="thread-head">
-            <div>
+            <button id="back" class="icon-btn back" aria-label="Back to chats" data-icon="back"></button>
+            <span id="thread-avatar"></span>
+            <div class="thread-title">
               <strong id="title"></strong>
               <span id="presence" class="muted"></span>
             </div>
             <div class="call-buttons">
-              <button id="join-call" hidden>Join call</button>
-              <button id="call-audio" title="Voice call" aria-label="Voice call">📞</button>
-              <button id="call-video" title="Video call" aria-label="Video call">🎥</button>
+              <button id="join-call" class="btn success sm" hidden>Join call</button>
+              <button id="call-audio" class="icon-btn" title="Voice call" aria-label="Voice call" data-icon="phone"></button>
+              <button id="call-video" class="icon-btn" title="Video call" aria-label="Video call" data-icon="video"></button>
             </div>
           </header>
-          <button id="older" class="link older">Load older messages</button>
-          <ol id="messages" class="messages"></ol>
-          <div id="typing" class="typing muted"></div>
+
+          <div id="scroller" class="scroller">
+            <button id="older" class="btn ghost sm older">Load older messages</button>
+            <ol id="messages" class="messages"></ol>
+          </div>
+          <div id="typing" class="typing" aria-live="polite"></div>
+
+          <div id="upload" class="upload" hidden><span class="spinner"></span><span id="upload-text"></span></div>
           <form id="composer" class="composer">
-            <label class="attach" title="Attach a file">📎<input id="file" type="file" hidden /></label>
-            <input id="text" placeholder="Message" autocomplete="off" aria-label="Message" />
-            <button type="submit">Send</button>
+            <label class="icon-btn attach" title="Attach a file" aria-label="Attach a file" data-icon="paperclip"><input id="file" type="file" hidden /></label>
+            <textarea id="text" rows="1" placeholder="Message" autocomplete="off" aria-label="Message"></textarea>
+            <button id="send" type="submit" class="send" aria-label="Send" data-icon="send" disabled></button>
           </form>
-          <div id="upload" class="muted upload" hidden></div>
-          <p id="chat-error" class="error" role="alert"></p>
         </div>
       </section>
     </div>
-    <div id="incoming" class="incoming" role="alertdialog" aria-labelledby="incoming-text" hidden>
-      <p id="incoming-text"></p>
-      <div class="row">
-        <button id="accept-video">🎥 Accept</button>
-        <button id="accept-audio">📞 Accept audio</button>
-        <button id="decline" class="danger">Decline</button>
+
+    <div id="toast" class="toast" role="alert" hidden></div>
+
+    <!-- ------------------------------------------------------------ incoming call -->
+    <div id="incoming" class="incoming" role="alertdialog" aria-labelledby="incoming-name" hidden>
+      <div class="incoming-card">
+        <div class="pulse"><span id="incoming-avatar"></span></div>
+        <strong id="incoming-name"></strong>
+        <span id="incoming-text" class="muted"></span>
+        <div class="incoming-actions">
+          <div class="action"><button id="decline" class="round danger" aria-label="Decline" data-icon="phone-off" data-size="26"></button><span>Decline</span></div>
+          <div class="action"><button id="accept-audio" class="round success" aria-label="Accept with audio only" data-icon="phone" data-size="26"></button><span>Audio</span></div>
+          <div class="action" id="accept-video-wrap"><button id="accept-video" class="round success" aria-label="Accept with video" data-icon="video" data-size="26"></button><span>Video</span></div>
+        </div>
       </div>
     </div>
 
+    <!-- ------------------------------------------------------------ in call -->
     <section id="call" class="call" aria-label="Call" hidden>
       <header class="call-head">
-        <strong id="call-status"></strong>
-        <span id="call-quality" class="muted"></span>
+        <div>
+          <strong id="call-title"></strong>
+          <span id="call-status"></span>
+        </div>
+        <span id="call-quality" class="quality" title="Network quality"><i></i><i></i><i></i></span>
       </header>
       <div id="tiles" class="tiles"></div>
       <div id="call-sound" hidden></div>
-      <p id="call-error" class="error" role="alert"></p>
+      <p id="call-error" class="call-error" role="alert"></p>
       <footer class="controls">
-        <button id="mic"></button>
-        <button id="cam"></button>
-        <button id="flip">🔄 Switch camera</button>
-        <button id="share"></button>
-        <button id="hangup" class="danger">Hang up</button>
+        <button id="mic" class="round" aria-label="Mute microphone"></button>
+        <button id="cam" class="round" aria-label="Turn camera off"></button>
+        <button id="flip" class="round" aria-label="Switch camera" data-icon="flip" data-size="22"></button>
+        <button id="share" class="round" aria-label="Share screen" data-icon="screen" data-size="22"></button>
+        <button id="hangup" class="round danger wide" aria-label="Hang up" data-icon="phone-off" data-size="24"></button>
       </footer>
     </section>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>
