@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 import { ChatServer } from "../../dist/server.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
@@ -16,6 +17,11 @@ if (!BYOTALK_SECRET_KEY || !BYOTALK_ENV) {
   console.error("Set BYOTALK_SECRET_KEY and BYOTALK_ENV in examples/web/.env (copy .env.example)");
   process.exit(1);
 }
+
+// byotalk/calls imports mediasoup-client; real apps get it from their bundler, this demo bundles it once.
+const mediasoupClient = (
+  await build({ stdin: { contents: 'export { Device } from "mediasoup-client";', resolveDir: here }, bundle: true, format: "esm", write: false, platform: "browser" })
+).outputFiles[0].text;
 
 const chatServer = new ChatServer({ secretKey: BYOTALK_SECRET_KEY, baseUrl: API_URL });
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".map": "application/json" };
@@ -50,6 +56,7 @@ createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/sdk/mediasoup-client.js") return res.writeHead(200, { "content-type": "text/javascript" }).end(mediasoupClient);
   if (url.pathname.startsWith("/sdk/")) return serveFile(res, join(here, "../../dist"), url.pathname.slice(5));
   return serveFile(res, join(here, "public"), url.pathname === "/" ? "index.html" : url.pathname.slice(1));
 }).listen(PORT, () => console.log(`Example chat app: http://localhost:${PORT}`));

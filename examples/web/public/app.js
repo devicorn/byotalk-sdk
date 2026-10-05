@@ -1,6 +1,7 @@
 // Example chat client built on the `byotalk` SDK (served from ../../dist as /sdk/index.js).
 // All user content is rendered with textContent, never innerHTML.
 import { Chat, localStoragePersistence } from "/sdk/index.js";
+import { initCalls, setConversation } from "./calls.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -79,6 +80,7 @@ async function start(first) {
   $("app").hidden = false;
   $("me-name").textContent = `${me.name} (${me.id})`;
   await chat.connect();
+  initCalls(chat, nameOf);
   chat.conversations.watch(renderConversations);
 }
 
@@ -185,6 +187,7 @@ async function open(id) {
     $("presence").textContent = `${conv.members.length} members`;
   }
   await conv.markRead().catch(() => {});
+  void setConversation(conv);
   $("text").focus();
 }
 

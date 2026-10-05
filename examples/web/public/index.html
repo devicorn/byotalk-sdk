@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ByoTalk example chat</title>
     <link rel="stylesheet" href="/styles.css" />
+    <!-- byotalk/calls imports mediasoup-client; a bundler resolves it in real apps, here the server bundles it. -->
+    <script type="importmap">{ "imports": { "mediasoup-client": "/sdk/mediasoup-client.js" } }</script>
   </head>
   <body>
     <main id="login" class="login">
@@ -47,6 +49,11 @@
               <strong id="title"></strong>
               <span id="presence" class="muted"></span>
             </div>
+            <div class="call-buttons">
+              <button id="join-call" hidden>Join call</button>
+              <button id="call-audio" title="Voice call" aria-label="Voice call">📞</button>
+              <button id="call-video" title="Video call" aria-label="Video call">🎥</button>
+            </div>
           </header>
           <button id="older" class="link older">Load older messages</button>
           <ol id="messages" class="messages"></ol>
@@ -61,6 +68,31 @@
         </div>
       </section>
     </div>
+    <div id="incoming" class="incoming" role="alertdialog" aria-labelledby="incoming-text" hidden>
+      <p id="incoming-text"></p>
+      <div class="row">
+        <button id="accept-video">🎥 Accept</button>
+        <button id="accept-audio">📞 Accept audio</button>
+        <button id="decline" class="danger">Decline</button>
+      </div>
+    </div>
+
+    <section id="call" class="call" aria-label="Call" hidden>
+      <header class="call-head">
+        <strong id="call-status"></strong>
+        <span id="call-quality" class="muted"></span>
+      </header>
+      <div id="tiles" class="tiles"></div>
+      <div id="call-sound" hidden></div>
+      <p id="call-error" class="error" role="alert"></p>
+      <footer class="controls">
+        <button id="mic"></button>
+        <button id="cam"></button>
+        <button id="flip">🔄 Switch camera</button>
+        <button id="share"></button>
+        <button id="hangup" class="danger">Hang up</button>
+      </footer>
+    </section>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

@@ -6,9 +6,10 @@ A small chat app built the way a customer would build one:
   `byotalk/server` (`GET /api/token`). Also serves the page.
 - `public/` — **your web app**. Uses the `byotalk` SDK in the browser: conversation list with unread counts,
   direct chats and groups, send/edit/delete, offline sending with retry, typing, read receipts, presence,
-  older history.
+  older history, file attachments, and voice/video calls (`public/calls.js`, on `byotalk/calls`).
 
-No build step and no extra dependencies: the page imports the SDK from `../../dist`.
+No build step: the page imports the SDK from `../../dist`. `byotalk/calls` imports `mediasoup-client`; in your
+app your bundler resolves it, here `server.mjs` bundles it once and an import map points to it.
 
 ## Run it locally
 
@@ -38,7 +39,15 @@ What to check:
 | Offline sending | DevTools → Network → Offline, send a message (stays "sending"), go Online → it is sent once |
 | Edit / delete | Hover your own message |
 | Groups | "New group" with `bob, carol` |
-| Data ownership | With BYO-PG enabled (dashboard → Storage), the messages appear in your Postgres `byotalk.messages` |
+| Files | 📎 in the composer (needs media storage: dashboard → Storage → Media) |
+| Data ownership | With your own database connected (dashboard → Storage), the messages appear in its `messages` table |
+| Voice / video call | Open the chat → 📞 or 🎥. Bob gets an incoming-call card (Accept / Accept audio / Decline) |
+| In a call | Mute, camera off/on, switch camera, share screen, hang up; green border = speaking; "network: good/fair/poor" |
+| Group call | Call from a group; members who ignored the ring see **Join call** in the group header |
+| Missed call | Call Bob while his window is closed: after 45 s the call ends as "No answer" |
+
+Calls need the media node (`pnpm dev` in `byotalk-server` starts it on :3003) and, for networks that block
+UDP, a TURN server: `turnserver -c deploy/turnserver.dev.conf` in `byotalk-server` (`brew install coturn`).
 
 > The `/api/token` route signs in whoever asks — fine for a local demo only. In your app, mint a token only
 > for the user of your own authenticated session. Never put the secret key in browser code.

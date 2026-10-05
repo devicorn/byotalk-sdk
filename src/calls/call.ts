@@ -67,6 +67,7 @@ export class Call {
   private iceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private lastInbound = { lost: 0, received: 0 };
+  private lossAvg = 0;
   private detachOnline: (() => void) | null = null;
   private facingMode: "user" | "environment" = "user";
 
@@ -328,9 +329,12 @@ export class Call {
     const dl = lost - this.lastInbound.lost;
     const dr = received - this.lastInbound.received;
     this.lastInbound = { lost, received };
-    stats.packetLoss = dl + dr > 0 ? Math.max(0, dl) / (dl + dr) : null;
+    // Too few packets in the window say nothing (silence with DTX, a paused camera).
+    stats.packetLoss = dl + dr >= 50 ? Math.max(0, dl) / (dl + dr) : null;
+    // Smoothed, so one burst (a keyframe, a new screen share) does not flip the indicator.
+    if (stats.packetLoss !== null) this.lossAvg = this.lossAvg * 0.6 + stats.packetLoss * 0.4;
     const rtt = stats.rttMs ?? 0;
-    const loss = stats.packetLoss ?? 0;
+    const loss = this.lossAvg;
     stats.quality = stats.rttMs === null ? "unknown" : rtt < 250 && loss < 0.02 ? "good" : rtt < 500 && loss < 0.08 ? "fair" : "poor";
     return stats;
   }
