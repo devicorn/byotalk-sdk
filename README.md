@@ -70,6 +70,10 @@ rule allowing `PUT` from your app's origin.
 
 ## Calls
 
+```bash
+npm i byotalk mediasoup-client   # mediasoup-client is an optional peer dependency, needed only for byotalk/calls
+```
+
 ```ts
 import { CallClient } from "byotalk/calls";
 
@@ -91,7 +95,7 @@ await call.startScreenShare();
 await call.leave(); // a 1:1 call ends for both
 ```
 
-Media goes through ByoTalk's own media server (an SFU) and TURN server, encrypted in transit (DTLS-SRTP); calls are not end-to-end encrypted and are never recorded. Reconnection after network changes is automatic. `mediasoup-client` is used only by `byotalk/calls`; importing `byotalk` does not load it.
+Media goes through ByoTalk's own media server (an SFU) and TURN server, encrypted in transit (DTLS-SRTP); calls are not end-to-end encrypted and are never recorded. Reconnection after network changes is automatic. `mediasoup-client` is used only by `byotalk/calls` (install it yourself); importing `byotalk` does not load it.
 
 React Native: install `react-native-webrtc`, call its `registerGlobals()` first, and pass its `mediaDevices` (`new CallClient(chat, { mediaDevices })`); Expo needs a development build. Not yet tested on devices; no CallKit / ConnectionService yet.
 

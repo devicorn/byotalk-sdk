@@ -63,7 +63,8 @@
     "@react-native-async-storage/async-storage": ">=1.19",
     "@react-native-community/netinfo": ">=11",
     "react-native": ">=0.72",
-    "react-native-mmkv": ">=2.10"
+    "react-native-mmkv": ">=2.10",
+    "mediasoup-client": "^3.24.4"
   },
   "peerDependenciesMeta": {
     "@react-native-async-storage/async-storage": {
@@ -76,6 +77,9 @@
       "optional": true
     },
     "react-native-mmkv": {
+      "optional": true
+    },
+    "mediasoup-client": {
       "optional": true
     }
   },
@@ -92,10 +96,8 @@
     "tsup": "^8.5.1",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.0",
-    "vitest": "^5.0.3"
-  },
-  "packageManager": "pnpm@11.9.0",
-  "dependencies": {
+    "vitest": "^5.0.3",
     "mediasoup-client": "^3.24.4"
-  }
+  },
+  "packageManager": "pnpm@11.9.0"
 }
