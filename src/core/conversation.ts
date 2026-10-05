@@ -3,7 +3,7 @@ import type { Chat } from "./chat.js";
 import { ChatError } from "./errors.js";
 import { MessageStore } from "./store.js";
 import type { Attachment, Json, Member, MemberEvent, Message, UploadInput, Unsubscribe, WireData } from "./types.js";
-import { Emitter, uuidv7 } from "./util.js";
+import { Emitter, path, uuidv7 } from "./util.js";
 
 export interface ServerMessage {
   id: string;
@@ -87,7 +87,7 @@ export class Conversation {
 
   /** Loads the latest page (called once when the conversation object is created). */
   async loadLatest(limit = 50) {
-    const page = await this.chat.rest.request<{ data: ServerMessage[]; hasMore: boolean }>("GET", `/v1/conversations/${this.id}/messages`, { query: { limit } });
+    const page = await this.chat.rest.request<{ data: ServerMessage[]; hasMore: boolean }>("GET", path`/v1/conversations/${this.id}/messages`, { query: { limit } });
     this.messages.upsertMany(page.data.map((m) => toMessage(m)));
     return page.hasMore;
   }
@@ -96,7 +96,7 @@ export class Conversation {
   async loadOlder(opts: { limit?: number } = {}): Promise<{ messages: Message[]; hasMore: boolean }> {
     const before = this.messages.oldestSeq;
     if (before === null || before <= 1) return { messages: [], hasMore: false };
-    const page = await this.chat.rest.request<{ data: ServerMessage[]; hasMore: boolean }>("GET", `/v1/conversations/${this.id}/messages`, {
+    const page = await this.chat.rest.request<{ data: ServerMessage[]; hasMore: boolean }>("GET", path`/v1/conversations/${this.id}/messages`, {
       query: { before, limit: opts.limit ?? 50 },
     });
     const msgs = page.data.map((m) => toMessage(m));
@@ -158,8 +158,8 @@ export class Conversation {
     const cur = this.messages.get(messageId);
     const undo = this.messages.patch(messageId, { ...input, editedAt: new Date().toISOString() });
     try {
-      const expectedVersion = cur?.version ?? (await this.chat.rest.request<ServerMessage>("GET", `/v1/messages/${messageId}`)).version;
-      const m = await this.chat.rest.request<ServerMessage>("PATCH", `/v1/messages/${messageId}`, { body: { ...input, expectedVersion } });
+      const expectedVersion = cur?.version ?? (await this.chat.rest.request<ServerMessage>("GET", path`/v1/messages/${messageId}`)).version;
+      const m = await this.chat.rest.request<ServerMessage>("PATCH", path`/v1/messages/${messageId}`, { body: { ...input, expectedVersion } });
       const msg = toMessage(m, cur?.clientMsgId ?? null);
       this.messages.upsert(msg);
       return msg;
@@ -172,7 +172,7 @@ export class Conversation {
   async delete(messageId: string): Promise<void> {
     const undo = this.messages.patch(messageId, { text: null, attachments: [], metadata: {}, deletedAt: new Date().toISOString() });
     try {
-      await this.chat.rest.request("DELETE", `/v1/messages/${messageId}`);
+      await this.chat.rest.request("DELETE", path`/v1/messages/${messageId}`);
     } catch (err) {
       undo?.();
       throw err;
@@ -185,7 +185,7 @@ export class Conversation {
     if (!target) return;
     this.unreadCount = 0;
     if (this.chat.transport.isOpen) await this.chat.transport.request("read", { cid: this.id, seq: target });
-    else await this.chat.rest.request("POST", `/v1/conversations/${this.id}/read`, { body: { seq: target } });
+    else await this.chat.rest.request("POST", path`/v1/conversations/${this.id}/read`, { body: { seq: target } });
     this.chat.noteRead(this.id, target);
   }
 
@@ -209,7 +209,7 @@ export class Conversation {
   }
 
   async addMembers(userIds: string[]) {
-    await this.chat.rest.request("POST", `/v1/conversations/${this.id}/members`, { body: { userIds } });
+    await this.chat.rest.request("POST", path`/v1/conversations/${this.id}/members`, { body: { userIds } });
   }
 
   async removeMember(userId: string) {
@@ -221,17 +221,17 @@ export class Conversation {
   }
 
   async mute() {
-    await this.chat.rest.request("PUT", `/v1/conversations/${this.id}/mute`);
+    await this.chat.rest.request("PUT", path`/v1/conversations/${this.id}/mute`);
     this.muted = true;
   }
 
   async unmute() {
-    await this.chat.rest.request("DELETE", `/v1/conversations/${this.id}/mute`);
+    await this.chat.rest.request("DELETE", path`/v1/conversations/${this.id}/mute`);
     this.muted = false;
   }
 
   async update(input: { name?: string; metadata?: Json }) {
-    await this.chat.rest.request("PATCH", `/v1/conversations/${this.id}`, { body: input });
+    await this.chat.rest.request("PATCH", path`/v1/conversations/${this.id}`, { body: input });
   }
 
   /** Members whose read watermark is at or past `seq` (excluding the sender of that message). */
@@ -316,16 +316,17 @@ export class Conversation {
     this.catchingUp = (async () => {
       try {
         for (;;) {
+          const before = this.lastSeq;
           const page = await this.chat.rest.request<{ data: { seq: number; type: string; [k: string]: unknown }[]; hasMore: boolean }>(
             "GET",
-            `/v1/conversations/${this.id}/events`,
+            path`/v1/conversations/${this.id}/events`,
             { query: { after: this.lastSeq, limit: 200 } },
           );
           for (const ev of page.data) {
             const { seq, type, ...d } = ev;
             if (seq === this.lastSeq + 1) this.apply(seq, type, d);
           }
-          if (!page.hasMore) break;
+          if (!page.hasMore || this.lastSeq === before) break; // no progress: never spin
         }
         this.gapFailures = 0;
       } catch (err) {
@@ -344,7 +345,7 @@ export class Conversation {
 
   /** resync_required: drop the window, reload the latest page, continue from the server's lastSeq. */
   async resync() {
-    const c = await this.chat.rest.request<ServerConversation>("GET", `/v1/conversations/${this.id}`);
+    const c = await this.chat.rest.request<ServerConversation>("GET", path`/v1/conversations/${this.id}`);
     this.messages.clear();
     this.lastSeq = c.lastSeq;
     this.members = (c.members ?? []).map((m) => ({ ...m, ...this.members.find((x) => x.userId === m.userId) }));

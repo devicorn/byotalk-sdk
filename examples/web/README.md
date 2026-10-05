@@ -3,7 +3,7 @@
 A small chat app built the way a customer would build one:
 
 - `server.mjs` — **your backend**. Holds the secret key, upserts the user and mints a user token with
-  `byotalk/server` (`GET /api/token`). Also serves the page.
+  `byotalk/server` (`POST /api/token`). Also serves the page.
 - `public/` — **your web app**. Uses the `byotalk` SDK in the browser: conversation list with unread counts,
   direct chats and groups, send/edit/delete, offline sending with retry, typing, read receipts, presence,
   older history, file attachments, and voice/video calls (`public/calls.js`, on `byotalk/calls`).
@@ -49,5 +49,6 @@ What to check:
 Calls need the media node (`pnpm dev` in `byotalk-server` starts it on :3003) and, for networks that block
 UDP, a TURN server: `turnserver -c deploy/turnserver.dev.conf` in `byotalk-server` (`brew install coturn`).
 
-> The `/api/token` route signs in whoever asks — fine for a local demo only. In your app, mint a token only
+> The `/api/token` route signs in whoever asks — fine for a local demo only, which is why the server listens on
+> 127.0.0.1 only (`HOST` to change it) and refuses `sk_live_` keys. In your app, mint a token only
 > for the user of your own authenticated session. Never put the secret key in browser code.

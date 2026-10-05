@@ -2,6 +2,7 @@
 import { ChatError } from "./errors.js";
 import type { RestClient } from "./rest.js";
 import type { Attachment, UploadInput } from "./types.js";
+import { path } from "./util.js";
 
 interface UploadTicket {
   attachmentId: string;
@@ -34,7 +35,7 @@ export class Uploader {
       await send("POST", ticket.upload.url, form, {}, opts);
     }
     opts.onProgress?.(1);
-    return this.rest.request<Attachment>("POST", `/v1/uploads/${ticket.attachmentId}/complete`, { signal: opts.signal });
+    return this.rest.request<Attachment>("POST", path`/v1/uploads/${ticket.attachmentId}/complete`, { signal: opts.signal });
   }
 }
 

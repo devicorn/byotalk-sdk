@@ -40,6 +40,9 @@ export class Transport extends Emitter {
   private ws: WebSocketLike | null = null;
   private wanted = false;
   private attempt = 0;
+  // Backoff restarts only after a connection that stayed up: a server that says hello and closes at once
+  // must not get an instant reconnect loop.
+  private helloAt = 0;
   private reqId = 0;
   private pending = new Map<string, Pending>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -180,7 +183,7 @@ export class Transport extends Emitter {
     switch (f.t) {
       case "hello":
         this.hello = f.d;
-        this.attempt = 0;
+        this.helloAt = Date.now();
         this.authRefreshed = false;
         this.emit("hello", f.d);
         return;
@@ -272,6 +275,8 @@ export class Transport extends Emitter {
   private scheduleReconnect(delay?: number) {
     if (!this.wanted) return;
     this.setState("reconnecting");
+    if (this.helloAt && Date.now() - this.helloAt > 30_000) this.attempt = 0;
+    this.helloAt = 0;
     const ms = delay ?? backoffDelay(this.attempt++);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = setTimeout(() => {

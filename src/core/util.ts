@@ -63,3 +63,17 @@ export function tokenExpiry(token: string): number | null {
 }
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * URL path with every interpolated value percent-encoded: an id like "c_1/../../members/u_2" taken from a deep
+ * link stays one path segment instead of reaching another endpoint with the user's token.
+ */
+export function path(strings: TemplateStringsArray, ...values: (string | number)[]): string {
+  return strings.reduce((out, s, i) => {
+    if (i >= values.length) return out + s;
+    const v = String(values[i]);
+    // "." and ".." survive encoding (and URL parsers read "%2e%2e" as ".." too): no id looks like that.
+    if (v === "" || v === "." || v === "..") throw new TypeError(`Invalid id ${JSON.stringify(v)}`);
+    return out + s + encodeURIComponent(v);
+  }, "");
+}

@@ -6,7 +6,7 @@ import { memoryPersistence } from "./persistence.js";
 import { RestClient } from "./rest.js";
 import { Transport, type WebSocketCtor } from "./transport.js";
 import type { ConnectionState, ConversationSummary, Json, Message, Page, PersistenceAdapter, Presence, Unsubscribe, WireData, WireFrame } from "./types.js";
-import { Emitter } from "./util.js";
+import { Emitter, path } from "./util.js";
 import { Uploader } from "./uploader.js";
 
 export const SDK_VERSION = "0.1.0";
@@ -199,6 +199,9 @@ export class Chat {
   constructor(opts: ChatOptions) {
     if (!opts?.env) throw new ChatError({ code: "invalid_request", type: "invalid_request", message: "env is required" });
     if (!opts.token) throw new ChatError({ code: "invalid_request", type: "invalid_request", message: "token is required" });
+    if (typeof opts.token === "string" && opts.token.startsWith("sk_")) {
+      throw new ChatError({ code: "invalid_request", type: "invalid_request", message: "That is a secret key: it belongs on your server. Pass a user token (ChatServer.createToken) instead" });
+    }
     this.env = opts.env;
     const auth = new AuthManager(opts.token);
     this.rest = new RestClient(opts.baseUrl ?? "https://api.byotalk.com", opts.env, auth);
@@ -251,6 +254,11 @@ export class Chat {
     if (this.transport.state === "failed") this.transport.state = "disconnected";
     this.transport.start();
     return p;
+  }
+
+  /** Deletes what this user left in persistence (unsent messages, sync cursor). Call on sign-out, before disconnect. */
+  async clearLocalData(): Promise<void> {
+    await Promise.all(["outbox", "cursor"].map((k) => this.persistence.delete(this.key(k))));
   }
 
   async disconnect(): Promise<void> {
@@ -420,7 +428,7 @@ export class Chat {
         }
         const members = await this.rest.request<{ data: { userId: string; role: "owner" | "member"; lastReadSeq: number; lastDeliveredSeq: number }[] }>(
           "GET",
-          `/v1/conversations/${c.id}/members`,
+          path`/v1/conversations/${c.id}/members`,
         );
         conv.members = members.data.map((m) => ({ userId: m.userId, role: m.role, lastReadSeq: m.lastReadSeq, lastDeliveredSeq: m.lastDeliveredSeq }));
         conv.unreadCount = this.summaries.get(c.id)?.unreadCount ?? 0;
@@ -450,7 +458,7 @@ export class Chat {
     get: async (id: string): Promise<Conversation> => {
       const hit = this.convs.get(id);
       if (hit) return hit;
-      return this.materialize(await this.rest.request<ServerConversation>("GET", `/v1/conversations/${id}`));
+      return this.materialize(await this.rest.request<ServerConversation>("GET", path`/v1/conversations/${id}`));
     },
     list: async (opts: { limit?: number; cursor?: string } = {}): Promise<Page<ConversationSummary>> => {
       const page = await this.rest.request<Page<ConversationSummary>>("GET", "/v1/conversations", { query: { limit: opts.limit, cursor: opts.cursor } });

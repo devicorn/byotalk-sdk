@@ -1,5 +1,6 @@
 // Server SDK (`byotalk/server`): local token signing, REST client, webhook verification. Node 22+ only.
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { path } from "../core/util.js";
 
 export interface ChatServerOptions {
   /** sk_live_… or sk_test_… — keep it on your server. */
@@ -121,22 +122,22 @@ export class ChatServer {
   readonly conversations = {
     create: (input: { type: "direct" | "group"; members: string[]; name?: string; metadata?: Record<string, unknown>; ownerId?: string }) =>
       this.request("POST", "/v1/conversations", input, { idempotencyKey: crypto.randomUUID() }),
-    get: (id: string) => this.request("GET", `/v1/conversations/${id}`),
+    get: (id: string) => this.request("GET", path`/v1/conversations/${id}`),
     list: (userId: string, opts: { limit?: number; cursor?: string } = {}) => this.request("GET", "/v1/conversations", undefined, { query: { userId, ...opts } }),
-    update: (id: string, input: { name?: string; metadata?: Record<string, unknown> }) => this.request("PATCH", `/v1/conversations/${id}`, input),
-    delete: (id: string) => this.request("DELETE", `/v1/conversations/${id}`),
-    addMembers: (id: string, userIds: string[]) => this.request("POST", `/v1/conversations/${id}/members`, { userIds }),
+    update: (id: string, input: { name?: string; metadata?: Record<string, unknown> }) => this.request("PATCH", path`/v1/conversations/${id}`, input),
+    delete: (id: string) => this.request("DELETE", path`/v1/conversations/${id}`),
+    addMembers: (id: string, userIds: string[]) => this.request("POST", path`/v1/conversations/${id}/members`, { userIds }),
     removeMember: (id: string, userId: string) => this.request("DELETE", `/v1/conversations/${id}/members/${encodeURIComponent(userId)}`),
   };
 
   readonly messages = {
     send: (conversationId: string, input: { senderId: string; text?: string; metadata?: Record<string, unknown>; replyTo?: string; clientMsgId?: string }) =>
-      this.request("POST", `/v1/conversations/${conversationId}/messages`, { clientMsgId: crypto.randomUUID(), ...input }),
+      this.request("POST", path`/v1/conversations/${conversationId}/messages`, { clientMsgId: crypto.randomUUID(), ...input }),
     list: (conversationId: string, opts: { before?: number; after?: number; limit?: number } = {}) =>
-      this.request("GET", `/v1/conversations/${conversationId}/messages`, undefined, { query: opts }),
-    get: (id: string) => this.request("GET", `/v1/messages/${id}`),
-    update: (id: string, input: { text?: string; metadata?: Record<string, unknown>; expectedVersion: number }) => this.request("PATCH", `/v1/messages/${id}`, input),
-    delete: (id: string, opts: { hard?: boolean } = {}) => this.request("DELETE", `/v1/messages/${id}`, undefined, { query: { hard: opts.hard ? "true" : undefined } }),
+      this.request("GET", path`/v1/conversations/${conversationId}/messages`, undefined, { query: opts }),
+    get: (id: string) => this.request("GET", path`/v1/messages/${id}`),
+    update: (id: string, input: { text?: string; metadata?: Record<string, unknown>; expectedVersion: number }) => this.request("PATCH", path`/v1/messages/${id}`, input),
+    delete: (id: string, opts: { hard?: boolean } = {}) => this.request("DELETE", path`/v1/messages/${id}`, undefined, { query: { hard: opts.hard ? "true" : undefined } }),
   };
 
   readonly webhooks = {

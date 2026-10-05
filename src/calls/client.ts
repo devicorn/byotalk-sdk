@@ -3,7 +3,7 @@ import type { Chat } from "../core/chat.js";
 import { ChatError } from "../core/errors.js";
 import type { WebSocketCtor } from "../core/transport.js";
 import type { Page, Unsubscribe } from "../core/types.js";
-import { Emitter } from "../core/util.js";
+import { Emitter, path } from "../core/util.js";
 import { Call, mediaError, type LocalTracks } from "./call.js";
 import type { CallInfo, CallKind, CallOptions, MediaGrant } from "./types.js";
 
@@ -116,7 +116,7 @@ export class CallClient {
     // Calls we thought were live but the server no longer lists ended while we were away.
     for (const c of this.calls.values()) {
       if (c.state !== "ended" && !page.data.some((i) => i.id === c.id)) {
-        const info = await this.chat.rest.request<CallInfo>("GET", `/v1/calls/${c.id}`).catch(() => null);
+        const info = await this.chat.rest.request<CallInfo>("GET", path`/v1/calls/${c.id}`).catch(() => null);
         if (info) c.update(info);
       }
     }

@@ -46,7 +46,7 @@ hydrateIcons();
 // ------------------------------------------------------------------ sign in
 
 async function fetchToken(userId, name) {
-  const res = await fetch(`/api/token?userId=${encodeURIComponent(userId)}&name=${encodeURIComponent(name)}`);
+  const res = await fetch("/api/token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId, name }) });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -78,6 +78,7 @@ $("login-form").addEventListener("submit", async (e) => {
 
 $("logout").addEventListener("click", async () => {
   sessionStorage.removeItem("byotalk-example-user");
+  await chat?.clearLocalData(); // unsent messages stay behind otherwise, readable by the next person
   await chat?.disconnect();
   location.reload();
 });

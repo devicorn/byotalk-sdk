@@ -3,7 +3,7 @@
 import { Device, type types as ms } from "mediasoup-client";
 import { ChatError } from "../core/errors.js";
 import type { Unsubscribe } from "../core/types.js";
-import { backoffDelay, Emitter, sleep } from "../core/util.js";
+import { backoffDelay, Emitter, path, sleep } from "../core/util.js";
 import type { CallClient } from "./client.js";
 import { Signaling } from "./signaling.js";
 import type { CallInfo, CallState, CallStats, MediaGrant, NetworkQuality, Participant, TrackSource, VideoQuality } from "./types.js";
@@ -184,7 +184,7 @@ export class Call {
     this.setState("connecting");
     try {
       this.local = await this.client.acquire(opts.video ?? this.kind === "video", (e) => this.emitter.emit("error", e));
-      const { call, media } = await this.client.rpc<{ call: CallInfo; media: MediaGrant }>("call.join", `/v1/calls/${this.id}/join`, { callId: this.id });
+      const { call, media } = await this.client.rpc<{ call: CallInfo; media: MediaGrant }>("call.join", path`/v1/calls/${this.id}/join`, { callId: this.id });
       this.update(call);
       await this.connect(media);
     } catch (err) {
@@ -196,7 +196,7 @@ export class Call {
   }
 
   async decline(): Promise<void> {
-    const r = await this.client.rpc<{ call: CallInfo }>("call.decline", `/v1/calls/${this.id}/decline`, { callId: this.id });
+    const r = await this.client.rpc<{ call: CallInfo }>("call.decline", path`/v1/calls/${this.id}/decline`, { callId: this.id });
     this.update(r.call);
     this.finish();
   }
@@ -206,7 +206,7 @@ export class Call {
     if (this.state === "ended") return;
     this.finish();
     try {
-      const r = await this.client.rpc<{ call: CallInfo }>("call.leave", `/v1/calls/${this.id}/leave`, { callId: this.id });
+      const r = await this.client.rpc<{ call: CallInfo }>("call.leave", path`/v1/calls/${this.id}/leave`, { callId: this.id });
       this.info = r.call;
       this.emitter.emit("updated", this.info);
     } catch (err) {
@@ -267,6 +267,7 @@ export class Call {
     } catch (err) {
       throw mediaError(err);
     }
+    this.releaseIfEnded(stream);
     await this.stopScreenShare();
     const video = stream.getVideoTracks()[0]!;
     if ("contentHint" in video) video.contentHint = "detail";
@@ -459,7 +460,7 @@ export class Call {
     try {
       for (let attempt = 0; (this.state as CallState) !== "ended"; attempt++) {
         try {
-          const { call, media } = await this.client.rpc<{ call: CallInfo; media: MediaGrant }>("call.join", `/v1/calls/${this.id}/join`, { callId: this.id });
+          const { call, media } = await this.client.rpc<{ call: CallInfo; media: MediaGrant }>("call.join", path`/v1/calls/${this.id}/join`, { callId: this.id });
           this.update(call);
           if ((this.state as CallState) === "ended") return;
           await this.connect(media);
@@ -591,10 +592,18 @@ export class Call {
     const video = { width: { ideal: v.width ?? 1280 }, height: { ideal: v.height ?? 720 }, frameRate: { ideal: v.frameRate ?? 30 }, facingMode: this.facingMode, ...constraints };
     try {
       const s = await this.client.devices().getUserMedia(kind === "audio" ? { audio: { ...AUDIO, ...constraints } } : { video });
+      this.releaseIfEnded(s);
       return kind === "audio" ? s.getAudioTracks()[0]! : s.getVideoTracks()[0]!;
     } catch (err) {
-      throw mediaError(err);
+      throw err instanceof ChatError ? err : mediaError(err);
     }
+  }
+
+  /** The call ended while the permission prompt was open: release the device instead of leaving the light on. */
+  private releaseIfEnded(s: MediaStream) {
+    if (this.state !== "ended") return;
+    for (const t of s.getTracks()) t.stop();
+    throw new ChatError({ code: "call_ended", type: "invalid_request", message: "The call has ended" });
   }
 
   private async replaceInput(source: "mic" | "camera", constraints: MediaTrackConstraints) {

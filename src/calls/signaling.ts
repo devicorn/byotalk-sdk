@@ -17,6 +17,11 @@ export class Signaling {
   ) {}
 
   open(url: string, timeoutMs = 10_000): Promise<void> {
+    // The join frame carries the call token: never over cleartext except to a local development server.
+    const u = new URL(url);
+    if (u.protocol !== "wss:" && !(u.protocol === "ws:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))) {
+      return Promise.reject(new ChatError({ code: "invalid_request", type: "invalid_request", message: `Refusing insecure media server URL ${u.origin}` }));
+    }
     return new Promise((resolve, reject) => {
       const ws = new this.WS(`${url.replace(/\/$/, "")}/v1/call`, ["call.v1"]);
       this.ws = ws;

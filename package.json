@@ -43,6 +43,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "pnpm build && pnpm test",
     "dev": "tsup --watch",
     "test": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
@@ -62,9 +63,9 @@
   "peerDependencies": {
     "@react-native-async-storage/async-storage": ">=1.19",
     "@react-native-community/netinfo": ">=11",
+    "mediasoup-client": "^3.24.4",
     "react-native": ">=0.72",
-    "react-native-mmkv": ">=2.10",
-    "mediasoup-client": "^3.24.4"
+    "react-native-mmkv": ">=2.10"
   },
   "peerDependenciesMeta": {
     "@react-native-async-storage/async-storage": {
@@ -89,15 +90,15 @@
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.23.1",
-    "esbuild": "^0.27.7",
+    "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
     "fake-mediastreamtrack": "^2.2.1",
     "globals": "^17.13.0",
+    "mediasoup-client": "^3.24.4",
     "tsup": "^8.5.1",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.0",
-    "vitest": "^5.0.3",
-    "mediasoup-client": "^3.24.4"
+    "vitest": "^5.0.3"
   },
   "packageManager": "pnpm@11.9.0"
 }
