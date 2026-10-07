@@ -131,7 +131,14 @@ export class ChatServer {
   };
 
   readonly messages = {
-    send: (conversationId: string, input: { senderId: string; text?: string; metadata?: Record<string, unknown>; replyTo?: string; clientMsgId?: string }) =>
+    /**
+     * `clientMsgId` dedups retries (48 h, shared with the socket path). It must be a UUID such as
+     * `crypto.randomUUID()`; anything else is refused with 400. Omit it and one is generated.
+     */
+    send: (
+      conversationId: string,
+      input: { senderId: string; text?: string; metadata?: Record<string, unknown>; replyTo?: string; clientMsgId?: `${string}-${string}-${string}-${string}-${string}` },
+    ) =>
       this.request("POST", path`/v1/conversations/${conversationId}/messages`, { clientMsgId: crypto.randomUUID(), ...input }),
     list: (conversationId: string, opts: { before?: number; after?: number; limit?: number } = {}) =>
       this.request("GET", path`/v1/conversations/${conversationId}/messages`, undefined, { query: opts }),

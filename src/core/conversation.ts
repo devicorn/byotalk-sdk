@@ -59,6 +59,8 @@ export class Conversation {
   private catchingUp: Promise<void> | null = null;
   private gapFailures = 0;
   removed = false;
+  /** True while the server has messages older than the oldest one loaded; loadOlder() pages through them. */
+  hasOlder = false;
 
   constructor(
     private readonly chat: Chat,
@@ -89,18 +91,23 @@ export class Conversation {
   async loadLatest(limit = 50) {
     const page = await this.chat.rest.request<{ data: ServerMessage[]; hasMore: boolean }>("GET", path`/v1/conversations/${this.id}/messages`, { query: { limit } });
     this.messages.upsertMany(page.data.map((m) => toMessage(m)));
+    this.hasOlder = page.hasMore;
     return page.hasMore;
   }
 
   /** Older page before the oldest loaded message. Rejects with HistoryUnavailableError when the customer DB is down. */
   async loadOlder(opts: { limit?: number } = {}): Promise<{ messages: Message[]; hasMore: boolean }> {
     const before = this.messages.oldestSeq;
-    if (before === null || before <= 1) return { messages: [], hasMore: false };
+    if (before === null || before <= 1) {
+      this.hasOlder = false;
+      return { messages: [], hasMore: false };
+    }
     const page = await this.chat.rest.request<{ data: ServerMessage[]; hasMore: boolean }>("GET", path`/v1/conversations/${this.id}/messages`, {
       query: { before, limit: opts.limit ?? 50 },
     });
     const msgs = page.data.map((m) => toMessage(m));
     this.messages.upsertMany(msgs);
+    this.hasOlder = page.hasMore;
     return { messages: msgs, hasMore: page.hasMore };
   }
 

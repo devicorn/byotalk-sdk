@@ -12,7 +12,7 @@ npm i byotalk
 | `byotalk/react-native` | React Native (bare + Expo) | App lifecycle, network changes, MMKV/AsyncStorage persistence |
 | `byotalk/calls` | Browser, React Native (with `react-native-webrtc`) | Voice and video calls (1:1 and group, screen share) on mediasoup-client |
 | `byotalk/server` | Node 22+ | Token signing, REST client, webhook verification |
-| `npx byotalk db migrate` | Node 22+ | Creates the ByoTalk tables in your PostgreSQL, MySQL/MariaDB or MongoDB |
+| `npx -p byotalk -p pg byotalk db migrate` | Node 22+ | Creates the ByoTalk tables in your PostgreSQL, MySQL/MariaDB or MongoDB (the driver, `pg`, `mysql2` or `mongodb`, is not installed with `byotalk`) |
 
 ## Quick start (development environment)
 
@@ -46,6 +46,24 @@ const chat = new Chat({
 ```
 
 Never put a secret key in client code.
+
+## React Native
+
+```bash
+npm i byotalk react-native-get-random-values
+# optional: @react-native-community/netinfo (reconnect when the network returns), react-native-mmkv or
+# @react-native-async-storage/async-storage (unsent messages survive a restart)
+```
+
+```ts
+import "react-native-get-random-values"; // first, in your entry file: Hermes has no crypto.getRandomValues
+import { createChat, mmkvPersistence } from "byotalk/react-native";
+
+const chat = createChat({ env: "env_…", token: getToken, persistence: mmkvPersistence() });
+await chat.connect(); // also starts the AppState/NetInfo listeners; disconnect() removes them
+```
+
+Message ids are UUIDs made with `crypto.getRandomValues`. Without the polyfill `createChat()` throws an error naming it (on Expo you can instead set `globalThis.crypto = { getRandomValues }` with `getRandomValues` from `expo-crypto`). `mmkvPersistence()` works with react-native-mmkv v2, v3 and v4, or pass your own instance: `mmkvPersistence(storage)`. On sign-out call `await chat.clearLocalData()` then `await chat.disconnect()`; create a new chat for the next user.
 
 ## Guarantees
 
@@ -105,9 +123,13 @@ Types: `CallClient`, `Call`, `CallInfo`, `Participant`, `CallState`, `CallStats`
 
 ## Bring your own database
 
+The database drivers are optional peer dependencies, so web and mobile installs don't carry them; `npx -p` fetches the one the CLI needs. `--schema` is the Postgres schema, or the MySQL table / MongoDB collection prefix; the `_` separator is added for you (`--schema byotalk` gives `byotalk_messages`).
+
 ```bash
-npx byotalk db migrate --url "$ADMIN_DATABASE_URL" --schema byotalk   # postgres://, mysql://, mariadb://, mongodb://, mongodb+srv://
-npx byotalk db migrate --print-sql --engine postgres|mysql             # review or run the SQL yourself
+npx -p byotalk -p pg byotalk db migrate --url "$ADMIN_DATABASE_URL" --schema byotalk  # PostgreSQL
+npx -p byotalk -p mysql2 byotalk db migrate --url "$ADMIN_DATABASE_URL"                # MySQL / MariaDB
+npx -p byotalk -p mongodb byotalk db migrate --url "$ADMIN_DATABASE_URL"               # MongoDB (mongodb:// or mongodb+srv://)
+npx byotalk db migrate --print-sql --engine postgres|mysql                             # review or run the SQL yourself (no driver)
 ```
 
 | Engine | Creates | Writer |

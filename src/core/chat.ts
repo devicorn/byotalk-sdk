@@ -9,7 +9,7 @@ import type { ConnectionState, ConversationSummary, Json, Message, Page, Persist
 import { Emitter, path } from "./util.js";
 import { Uploader } from "./uploader.js";
 
-export const SDK_VERSION = "0.1.0";
+export const SDK_VERSION = "0.2.0";
 
 export interface ChatOptions {
   env: string;
@@ -199,6 +199,14 @@ export class Chat {
   constructor(opts: ChatOptions) {
     if (!opts?.env) throw new ChatError({ code: "invalid_request", type: "invalid_request", message: "env is required" });
     if (!opts.token) throw new ChatError({ code: "invalid_request", type: "invalid_request", message: "token is required" });
+    // Message ids are UUIDs made with Web Crypto; Hermes (React Native) has no crypto.getRandomValues.
+    if (typeof globalThis.crypto?.getRandomValues !== "function") {
+      throw new ChatError({
+        code: "invalid_request",
+        type: "invalid_request",
+        message: "crypto.getRandomValues is missing. On React Native install react-native-get-random-values and import it first in your entry file",
+      });
+    }
     if (typeof opts.token === "string" && opts.token.startsWith("sk_")) {
       throw new ChatError({ code: "invalid_request", type: "invalid_request", message: "That is a secret key: it belongs on your server. Pass a user token (ChatServer.createToken) instead" });
     }
@@ -372,7 +380,10 @@ export class Chat {
       next.lastMessage = f.d.message;
       if (f.d.message.senderId !== this._userId) next.unreadCount = Math.min(99, s.unreadCount + 1);
     }
-    if (f.e === "conversation.updated" && f.d.changes?.name !== undefined) next.name = f.d.changes.name;
+    if (f.e === "conversation.updated") {
+      if (f.d.changes?.name !== undefined) next.name = f.d.changes.name;
+      if (f.d.changes?.metadata !== undefined) next.metadata = f.d.changes.metadata;
+    }
     this.summaries.set(f.cid, next);
     this.notifySummaries();
   }

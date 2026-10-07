@@ -5,12 +5,14 @@ import { parseArgs } from "node:util";
 import { MONGODB_SPEC, MYSQL_SQL, POSTGRES_SQL, SCHEMA_VERSION } from "./schema.js";
 
 const HELP = `Usage:
-  npx byotalk db migrate --url <admin-database-url> [--schema byotalk] [--role <name>] [--no-role]
+  npx -p byotalk -p <pg|mysql2|mongodb> byotalk db migrate --url <admin-database-url> [--schema byotalk] [--role <name>] [--no-role]
   npx byotalk db migrate --print-sql --engine postgres|mysql [--schema byotalk]
 
 Supported URLs: postgres://…  mysql://… (MariaDB too)  mongodb://… or mongodb+srv://…
+The database driver is not bundled: run with npx -p byotalk -p pg|mysql2|mongodb byotalk db migrate …
+
 Creates the ByoTalk tables (Postgres: schema "<schema>"; MySQL/MongoDB: "<schema>_*" tables/collections in the
-URL's database) and a writer that can only read, insert and update them (no delete, no DDL). Prints the runtime
+URL's database; the "_" is added for you, so --schema byotalk gives byotalk_messages) and a writer that can only read, insert and update them (no delete, no DDL). Prints the runtime
 connection string once: paste it into Dashboard → Storage → Database.
 `;
 
@@ -177,6 +179,10 @@ export async function main(argv: string[]): Promise<number> {
     process.stderr.write("Invalid --schema (lowercase letters, digits, underscore)\n");
     return 1;
   }
+  if (schema.endsWith("_")) {
+    // Kept as given (existing installs use it), but it is rarely what was meant for MySQL and MongoDB.
+    process.stderr.write(`Note: the "_" separator is added for you; --schema ${schema} names MySQL tables and MongoDB collections "${schema}_messages". Use --schema ${schema.replace(/_+$/, "")} for "${schema.replace(/_+$/, "")}_messages".\n`);
+  }
   const role = values["no-role"] ? null : (values.role ?? (schema === "byotalk" ? "byotalk_writer" : `${schema}_writer`));
 
   if (values["print-sql"]) {
@@ -215,7 +221,9 @@ export async function main(argv: string[]): Promise<number> {
   } catch (err) {
     const msg = (err as Error).message;
     if (/Cannot find (package|module)/.test(msg)) {
-      process.stderr.write(`The database driver is missing: npm i -D ${engine === "postgres" ? "pg" : engine === "mysql" ? "mysql2" : "mongodb"}\n`);
+      // The drivers are optional peer dependencies, so app installs don't carry them.
+      const driver = engine === "postgres" ? "pg" : engine === "mysql" ? "mysql2" : "mongodb";
+      process.stderr.write(`The ${driver} driver is not installed. Run:\n  npx -p byotalk -p ${driver} byotalk db migrate --url … (same options)\nor add it to your project: npm i -D ${driver}\n`);
     } else {
       process.stderr.write(`Migration failed: ${msg}\n`);
     }
