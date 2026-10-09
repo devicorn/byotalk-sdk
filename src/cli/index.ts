@@ -2,11 +2,14 @@
 // MongoDB) and a least-privilege writer. The admin URL is used only on your machine and never sent to ByoTalk.
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
-import { MONGODB_SPEC, MYSQL_SQL, POSTGRES_SQL, SCHEMA_VERSION } from "./schema.js";
+import { MONGODB_SPEC, MYSQL_SQL, POSTGRES_SEARCH_SQL, POSTGRES_SQL, SCHEMA_VERSION } from "./schema.js";
 
 const HELP = `Usage:
   npx -p byotalk -p <pg|mysql2|mongodb> byotalk db migrate --url <admin-database-url> [--schema byotalk] [--role <name>] [--no-role]
   npx byotalk db migrate --print-sql --engine postgres|mysql [--schema byotalk]
+
+PostgreSQL only: add --search <dimensions> to also create the semantic search table (pgvector; CREATE EXTENSION
+needs a superuser or your provider's admin role). The writer may read, insert, update and delete that one table.
 
 Supported URLs: postgres://…  mysql://… (MariaDB too)  mongodb://… or mongodb+srv://…
 The database driver is not bundled: run with npx -p byotalk -p pg|mysql2|mongodb byotalk db migrate …
@@ -30,9 +33,16 @@ export function detectEngine(url: string): Engine | null {
 
 // ------------------------------------------------------------------ PostgreSQL
 
-export function migrationSql(schema: string, role: string | null, password: string | null): string {
+/** Semantic search (pgvector): message_embeddings sized for the embedding model; the writer may also delete there. */
+export function searchSql(schema: string, dimensions: number, role: string | null): string {
+  const ddl = POSTGRES_SEARCH_SQL.replaceAll("__SCHEMA__", qi(schema)).replaceAll("__DIMENSIONS__", String(dimensions));
+  return role ? `${ddl}GRANT SELECT, INSERT, UPDATE, DELETE ON ${qi(schema)}.message_embeddings TO ${qi(role)};\n` : ddl;
+}
+
+export function migrationSql(schema: string, role: string | null, password: string | null, searchDimensions?: number): string {
   const ddl = POSTGRES_SQL.replaceAll("__SCHEMA__", qi(schema));
-  if (!role) return ddl;
+  const search = searchDimensions ? `\n${searchSql(schema, searchDimensions, role)}` : "";
+  if (!role) return ddl + search;
   const r = qi(role);
   const pw = password ? ` PASSWORD ${ql(password)}` : "";
   return `${ddl}
@@ -45,16 +55,16 @@ DO $$ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA ${qi(schema)} TO ${r};
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA ${qi(schema)} TO ${r};
-`;
+${search}`;
 }
 
-async function migratePostgres(url: string, schema: string, role: string | null, password: string | null) {
+async function migratePostgres(url: string, schema: string, role: string | null, password: string | null, searchDimensions?: number) {
   const pg = (await import("pg")).default;
   const client = new pg.Client({ connectionString: url });
   await client.connect();
   try {
     await client.query("BEGIN");
-    await client.query(migrationSql(schema, role, password));
+    await client.query(migrationSql(schema, role, password, searchDimensions));
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
@@ -167,6 +177,7 @@ export async function main(argv: string[]): Promise<number> {
       engine: { type: "string" },
       "no-role": { type: "boolean", default: false },
       "print-sql": { type: "boolean", default: false },
+      search: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -183,10 +194,19 @@ export async function main(argv: string[]): Promise<number> {
     // Kept as given (existing installs use it), but it is rarely what was meant for MySQL and MongoDB.
     process.stderr.write(`Note: the "_" separator is added for you; --schema ${schema} names MySQL tables and MongoDB collections "${schema}_messages". Use --schema ${schema.replace(/_+$/, "")} for "${schema.replace(/_+$/, "")}_messages".\n`);
   }
+  const searchDimensions = values.search === undefined ? undefined : Number(values.search);
+  if (searchDimensions !== undefined && !(Number.isInteger(searchDimensions) && searchDimensions >= 1 && searchDimensions <= 2000)) {
+    process.stderr.write("--search takes the embedding size of your model, 1–2000 (e.g. 1536 for text-embedding-3-small)\n");
+    return 1;
+  }
   const role = values["no-role"] ? null : (values.role ?? (schema === "byotalk" ? "byotalk_writer" : `${schema}_writer`));
 
   if (values["print-sql"]) {
     const engine = (values.engine ?? "postgres") as Engine;
+    if (searchDimensions && engine !== "postgres") {
+      process.stderr.write("--search needs --engine postgres (pgvector)\n");
+      return 1;
+    }
     if (engine === "mysql") {
       const stmts = mysqlStatements(schema).map((s) => `${s};`);
       if (role) {
@@ -195,7 +215,7 @@ export async function main(argv: string[]): Promise<number> {
       }
       process.stdout.write(`${stmts.join("\n\n")}\n`);
     } else if (engine === "postgres") {
-      process.stdout.write(migrationSql(schema, role, null).replace(/ LOGIN;/g, " LOGIN PASSWORD 'choose-a-password';"));
+      process.stdout.write(migrationSql(schema, role, null, searchDimensions).replace(/ LOGIN;/g, " LOGIN PASSWORD 'choose-a-password';"));
     } else {
       process.stderr.write("--print-sql supports --engine postgres or mysql (MongoDB needs no SQL: run migrate with --url)\n");
       return 1;
@@ -212,10 +232,14 @@ export async function main(argv: string[]): Promise<number> {
     return 1;
   }
 
+  if (searchDimensions && engine !== "postgres") {
+    process.stderr.write("--search needs a postgres:// URL (pgvector)\n");
+    return 1;
+  }
   const password = role ? randomBytes(24).toString("base64url") : null;
   let userCreated = !!role;
   try {
-    if (engine === "postgres") await migratePostgres(values.url, schema, role, password);
+    if (engine === "postgres") await migratePostgres(values.url, schema, role, password, searchDimensions);
     else if (engine === "mysql") await migrateMysql(values.url, schema, role, password);
     else userCreated = await migrateMongo(values.url, schema, role, password);
   } catch (err) {

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+### Added
+
+- **Livestreams: `chat.livestreams.create()`, `join(id)`, `leave(id)`, `viewers(id)`.** A livestream has hosts (its members) and any number of viewers who are not members. `join()` returns a conversation whose messages arrive live; viewers can send unless the channel is read-only (`viewersCanSend: false`). The watch is renewed after every reconnect and missed messages are fetched. Server: `chatServer.conversations.create({ type: "livestream", … })` and `update(id, { viewersCanSend })`.
+- **Native SDKs in this repository:** Swift (`Package.swift` at the root, sources in `swift/`), Kotlin for Android and the JVM (`android/`) and Dart for Flutter (`flutter/`). Chat only; calls stay in the web and React Native SDKs.
+- **Semantic search: `chat.search(query, { conversationId?, limit? })`** returns `SearchHit[]` (`{ message, score }`), best match first, from the conversations the user is a member of (livestreams are excluded). `limit` is 1–50, default 20. Search must be enabled for the environment (Dashboard → Storage → Semantic search); otherwise it throws `ChatError` with code `search_disabled`.
+- **`chatServer.search({ query, userId?, conversationId?, limit? })`** for your backend. Pass `userId` to search as that user, `conversationId` for one conversation, or both. One of them is required.
+- **CLI: `--search <dimensions>`** creates the semantic search table (pgvector `message_embeddings`, HNSW index) with `db migrate`, PostgreSQL only: `npx byotalk db migrate --print-sql --engine postgres --search 1536`. The writer may read, insert, update and delete that one table. `CREATE EXTENSION vector` needs a superuser or your provider's admin role.
+
 ## 0.2.0
 
 ### Breaking

@@ -42,7 +42,7 @@ export interface Member {
 
 export interface ConversationSummary {
   id: string;
-  type: "direct" | "group";
+  type: "direct" | "group" | "livestream";
   name: string | null;
   metadata: Json;
   lastSeq: number;
@@ -51,6 +51,12 @@ export interface ConversationSummary {
   muted: boolean;
   lastActivityAt: string;
   lastMessage: Omit<Message, "status" | "clientMsgId"> | null;
+}
+
+/** One semantic search result: `score` is the cosine similarity (higher is closer). */
+export interface SearchHit {
+  message: Message;
+  score: number;
 }
 
 export interface Page<T> {

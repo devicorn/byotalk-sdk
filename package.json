@@ -1,6 +1,6 @@
 {
   "name": "byotalk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ByoTalk chat SDK: realtime client for web, React Native and Node, voice/video calls, server helpers and the db migrate CLI.",
   "license": "MIT",
   "type": "module",
@@ -10,7 +10,9 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

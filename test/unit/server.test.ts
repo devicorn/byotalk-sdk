@@ -6,6 +6,10 @@ import { detectEngine, migrationSql, mysqlStatements } from "../../src/cli/index
 const secret = "sk_test_abcdefghijklmnopqrstuvwxyz012345";
 
 describe("ChatServer", () => {
+  it("search needs userId or conversationId", () => {
+    expect(() => new ChatServer({ secretKey: secret }).search({ query: "x" })).toThrow(/userId or conversationId/);
+  });
+
   it("createToken signs HS256 with the kid derived from the secret", () => {
     const s = new ChatServer({ secretKey: secret });
     const t = s.createToken("user_1", { expiresIn: "1h" });
@@ -40,6 +44,16 @@ describe("CLI migration SQL", () => {
     expect(sql).toContain('GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA "byotalk" TO "byotalk_writer"');
     expect(sql).not.toMatch(/GRANT[^;]*DELETE/);
     expect(migrationSql("chat", null, null)).not.toContain("ROLE");
+  });
+
+  it("--search adds pgvector and message_embeddings; DELETE is granted on that table only", () => {
+    const sql = migrationSql("byotalk", "byotalk_writer", "pw", 768);
+    expect(sql).toContain("CREATE EXTENSION IF NOT EXISTS vector");
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "byotalk".message_embeddings');
+    expect(sql).toContain("vector(768)");
+    expect(sql).toContain("USING hnsw (embedding vector_cosine_ops)");
+    expect(sql.match(/GRANT[^;]*DELETE[^;]*;/g)).toEqual(['GRANT SELECT, INSERT, UPDATE, DELETE ON "byotalk".message_embeddings TO "byotalk_writer";']);
+    expect(migrationSql("byotalk", "byotalk_writer", "pw")).not.toContain("message_embeddings");
   });
 });
 

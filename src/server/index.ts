@@ -1,5 +1,6 @@
 // Server SDK (`byotalk/server`): local token signing, REST client, webhook verification. Node 22+ only.
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import type { ServerMessage } from "../core/conversation.js";
 import { path } from "../core/util.js";
 
 export interface ChatServerOptions {
@@ -120,11 +121,12 @@ export class ChatServer {
   };
 
   readonly conversations = {
-    create: (input: { type: "direct" | "group"; members: string[]; name?: string; metadata?: Record<string, unknown>; ownerId?: string }) =>
+    /** `livestream`: `members` are the hosts; viewers join from the client with `chat.livestreams.join()`. */
+    create: (input: { type: "direct" | "group" | "livestream"; members: string[]; name?: string; metadata?: Record<string, unknown>; ownerId?: string; viewersCanSend?: boolean }) =>
       this.request("POST", "/v1/conversations", input, { idempotencyKey: crypto.randomUUID() }),
     get: (id: string) => this.request("GET", path`/v1/conversations/${id}`),
     list: (userId: string, opts: { limit?: number; cursor?: string } = {}) => this.request("GET", "/v1/conversations", undefined, { query: { userId, ...opts } }),
-    update: (id: string, input: { name?: string; metadata?: Record<string, unknown> }) => this.request("PATCH", path`/v1/conversations/${id}`, input),
+    update: (id: string, input: { name?: string; metadata?: Record<string, unknown>; viewersCanSend?: boolean }) => this.request("PATCH", path`/v1/conversations/${id}`, input),
     delete: (id: string) => this.request("DELETE", path`/v1/conversations/${id}`),
     addMembers: (id: string, userIds: string[]) => this.request("POST", path`/v1/conversations/${id}/members`, { userIds }),
     removeMember: (id: string, userId: string) => this.request("DELETE", `/v1/conversations/${id}/members/${encodeURIComponent(userId)}`),
@@ -176,6 +178,15 @@ export class ChatServer {
       return JSON.parse(body) as WebhookEvent<T>;
     },
   };
+
+  /**
+   * Semantic search. Pass `userId` to search as that user (their current conversations, livestreams excluded),
+   * `conversationId` for one conversation, or both. Returns `{ data: [{ message, score }] }`, best match first.
+   */
+  search(input: { query: string; userId?: string; conversationId?: string; limit?: number }): Promise<{ data: { message: ServerMessage; score: number }[] }> {
+    if (!input.userId && !input.conversationId) throw new Error("search needs userId or conversationId");
+    return this.request("POST", "/v1/search", input);
+  }
 
   usage(opts: { from?: string; to?: string; granularity?: "day" | "hour" } = {}) {
     return this.request("GET", "/v1/usage", undefined, { query: opts });

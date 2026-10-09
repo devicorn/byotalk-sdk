@@ -86,6 +86,17 @@ Backblaze B2, MinIO) or Azure Blob container. The uploader follows the ticket fr
 `PUT` with headers), so your code is the same for every provider. Browser uploads to your own bucket need a CORS
 rule allowing `PUT` from your app's origin.
 
+## Livestreams
+
+```ts
+const live = await chat.livestreams.create({ name: "Launch day" }); // you host it
+const stream = await viewerChat.livestreams.join(live.id);          // viewers: not members
+stream.on("message.new", render);
+await stream.send({ text: "Hi!" });                                  // unless viewersCanSend is false
+```
+
+Viewers rejoin automatically after a reconnect. See the [livestream guide](https://docs.byotalk.com/livestream).
+
 ## Calls
 
 ```bash

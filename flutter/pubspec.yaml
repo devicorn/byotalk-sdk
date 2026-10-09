@@ -1,0 +1,13 @@
+name: byotalk
+description: ByoTalk chat SDK for Flutter and Dart. Realtime messaging over the chat.v1 WebSocket protocol with sync, offline outbox, receipts, typing and presence.
+version: 0.1.0
+homepage: https://byotalk.com
+
+environment:
+  sdk: ^3.5.0
+dependencies:
+  http: ^1.6.0
+  web_socket_channel: ^3.0.3
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.33.0

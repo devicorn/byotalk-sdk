@@ -5,11 +5,11 @@ import { ChatError } from "./errors.js";
 import { memoryPersistence } from "./persistence.js";
 import { RestClient } from "./rest.js";
 import { Transport, type WebSocketCtor } from "./transport.js";
-import type { ConnectionState, ConversationSummary, Json, Message, Page, PersistenceAdapter, Presence, Unsubscribe, WireData, WireFrame } from "./types.js";
+import type { ConnectionState, ConversationSummary, Json, Message, Page, PersistenceAdapter, Presence, SearchHit, Unsubscribe, WireData, WireFrame } from "./types.js";
 import { Emitter, path } from "./util.js";
 import { Uploader } from "./uploader.js";
 
-export const SDK_VERSION = "0.2.0";
+export const SDK_VERSION = "0.3.0";
 
 export interface ChatOptions {
   env: string;
@@ -191,6 +191,7 @@ export class Chat {
   private summaryWatchers = new Set<(list: ConversationSummary[]) => void>();
   private presenceWatchers = new Map<number, { userIds: string[]; cb: (p: Presence) => void }>();
   private presenceSeq = 0;
+  private live = new Set<string>();
   private syncCursor: string | null = null;
   private connectWaiters: { resolve: () => void; reject: (e: ChatError) => void }[] = [];
   private _userId: string | null = null;
@@ -302,7 +303,7 @@ export class Chat {
     }
     this.transport.setState("syncing");
     try {
-      await Promise.all([this.runSync(), this.outbox.flush(), this.rewatchPresence()]);
+      await Promise.all([this.runSync(), this.outbox.flush(), this.rewatchPresence(), this.rejoinLive()]);
       this.transport.setState("connected");
       for (const w of this.connectWaiters.splice(0)) w.resolve();
     } catch (err) {
@@ -484,6 +485,42 @@ export class Chat {
     },
   };
 
+  // ------------------------------------------------------------------ livestreams
+
+  readonly livestreams = {
+    /** A livestream hosted by you (and `hosts`). Viewers watch it with `join()`; `viewersCanSend: false` makes it read-only. */
+    create: async (input: { name?: string; hosts?: string[]; metadata?: Json; viewersCanSend?: boolean } = {}): Promise<Conversation> => {
+      const { hosts = [], ...rest } = input;
+      const c = await this.rest.request<ServerConversation>("POST", "/v1/conversations", { body: { type: "livestream", members: hosts, ...rest }, idempotent: true });
+      return this.materialize(c);
+    },
+    /**
+     * Watch a livestream without becoming a member: its messages arrive on the returned conversation like any other,
+     * `send()` works unless the channel is read-only, and the watch is renewed after every reconnect.
+     */
+    join: async (id: string): Promise<Conversation> => {
+      const conv = await this.conversations.get(id);
+      this.live.add(id);
+      if (this.transport.isOpen) await this.transport.request("live.join", { cid: id });
+      return conv;
+    },
+    leave: async (id: string): Promise<void> => {
+      this.live.delete(id);
+      if (this.transport.isOpen) await this.transport.request("live.leave", { cid: id }).catch(() => {});
+    },
+    /** Current number of viewers. */
+    viewers: async (id: string): Promise<number> => (await this.rest.request<{ viewers?: number }>("GET", path`/v1/conversations/${id}`)).viewers ?? 0,
+  };
+
+  private async rejoinLive() {
+    await Promise.all(
+      [...this.live].map(async (cid) => {
+        await this.transport.request("live.join", { cid }).catch(() => {});
+        await this.convs.get(cid)?.catchUp().catch(() => {});
+      }),
+    );
+  }
+
   // ------------------------------------------------------------------ presence
 
   readonly presence = {
@@ -512,6 +549,17 @@ export class Chat {
       if (snapshotFor !== undefined && id !== snapshotFor) continue;
       for (const p of r.presence) if (w.userIds.includes(p.userId)) w.cb(p);
     }
+  }
+
+  // ------------------------------------------------------------------ search
+
+  /**
+   * Semantic search over the conversations you are a member of (livestreams excluded), best match first. Needs
+   * search enabled for the environment (`search_disabled` otherwise). `limit` 1–50, default 20.
+   */
+  async search(query: string, opts: { conversationId?: string; limit?: number } = {}): Promise<SearchHit[]> {
+    const r = await this.rest.request<{ data: { message: ServerMessage; score: number }[] }>("POST", "/v1/search", { body: { query, ...opts } });
+    return r.data.map((d) => ({ message: toMessage(d.message), score: d.score }));
   }
 
   // ------------------------------------------------------------------ attachments

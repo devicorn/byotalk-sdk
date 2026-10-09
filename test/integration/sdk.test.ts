@@ -84,6 +84,36 @@ describe("quick start (docs/09 §2)", () => {
   });
 });
 
+describe("livestreams", () => {
+  it("a host streams, viewers join without membership, chat, and keep watching after a reconnect", async () => {
+    const host = chat("ls-host");
+    await host.connect();
+    const live = await host.livestreams.create({ name: "Launch" });
+    expect(live.type).toBe("livestream");
+
+    const viewer = chat("ls-viewer");
+    await viewer.connect();
+    const watched = await viewer.livestreams.join(live.id);
+    expect(await viewer.livestreams.viewers(live.id)).toBe(1);
+
+    await live.send({ text: "We are live" });
+    await waitFor(() => texts(watched).includes("We are live"));
+    await watched.send({ text: "hi from the crowd" });
+    await waitFor(() => texts(live).includes("hi from the crowd"));
+
+    // Missed while disconnected, then delivered after the automatic rejoin.
+    viewer.transport.stop();
+    await live.send({ text: "while you were away" });
+    viewer.transport.start();
+    await waitFor(() => texts(watched).includes("while you were away"), 10_000);
+    await live.send({ text: "and live again" });
+    await waitFor(() => texts(watched).includes("and live again"), 10_000);
+
+    await viewer.livestreams.leave(live.id);
+    expect(await viewer.livestreams.viewers(live.id)).toBe(0);
+  });
+});
+
 describe("delivery guarantees", () => {
   it("sends made while disconnected stay pending and flush exactly once on reconnect", async () => {
     const alice = chat("alice");

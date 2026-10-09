@@ -22,13 +22,15 @@ export interface ServerMessage {
 
 export interface ServerConversation {
   id: string;
-  type: "direct" | "group";
+  type: "direct" | "group" | "livestream";
   name: string | null;
   metadata: Json;
   lastSeq: number;
   members?: { userId: string; role: "owner" | "member" }[];
   lastReadSeq?: number;
   muted?: boolean;
+  /** Livestream only. */
+  viewersCanSend?: boolean;
 }
 
 export const toMessage = (m: ServerMessage, clientMsgId: string | null = null): Message => ({
@@ -42,7 +44,7 @@ const TYPING_THROTTLE_MS = 3_000;
 
 export class Conversation {
   readonly id: string;
-  readonly type: "direct" | "group";
+  readonly type: "direct" | "group" | "livestream";
   name: string | null;
   metadata: Json;
   members: Member[];
