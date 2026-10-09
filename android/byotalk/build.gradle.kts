@@ -17,7 +17,7 @@ java {
 dependencies {
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-    api("com.squareup.okhttp3:okhttp:4.12.0")
+    api("com.squareup.okhttp3:okhttp:5.1.0") // 5.x: happy-eyeballs connects (IPv4 + IPv6 raced)
     testImplementation(kotlin("test"))
 }
 

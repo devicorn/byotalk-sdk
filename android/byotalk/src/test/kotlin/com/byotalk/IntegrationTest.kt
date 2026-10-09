@@ -33,6 +33,8 @@ class IntegrationTest {
 
     /** Fresh org + project through the dashboard sign-in flow (dev magic link); returns its development env id. */
     private fun createDevEnv(): String {
+        // An existing development environment with dev tokens (e.g. on a deployment that never returns devLink).
+        System.getenv("BYOTALK_ENV")?.takeIf { it.isNotEmpty() }?.let { return it }
         val email = "sdk-kt-${System.currentTimeMillis()}-${(1000..9999).random()}@example.com"
         val link = post("/v1/auth/magic-link", """{"email":"$email"}""").use { obj(it.body!!.string()) }
         val token = link.str("devLink")!!.substringAfter("token=").substringBefore("&")
@@ -68,6 +70,11 @@ class IntegrationTest {
         throw last!!
     }
 
+    // Unique per test: with BYOTALK_ENV several runs (and SDKs) share one environment and must not see each other's chats.
+    private val run = java.util.UUID.randomUUID().toString().take(8)
+    private val A = "alice-$run"
+    private val B = "bob-$run"
+
     private fun chat(env: String, user: String) = ByoTalkChat(env, ByoTalkChat.devToken(user), api, rt).also { chats += it }
 
     @AfterTest fun tearDown() = runBlocking { chats.forEach { it.disconnect() } }
@@ -78,14 +85,14 @@ class IntegrationTest {
         assumeTrue(reachable(), "byotalk-server not reachable at $api")
         val env = setupEnv()
 
-        val alice = chat(env, "alice")
+        val alice = chat(env, A)
         alice.connect()
         assertEquals(ConnectionState.CONNECTED, alice.connectionState)
-        val dm = alice.conversations.direct("bob")
+        val dm = alice.conversations.direct(B)
 
-        val bob = chat(env, "bob")
+        val bob = chat(env, B)
         bob.connect()
-        val bobDm = bob.conversations.direct("alice")
+        val bobDm = bob.conversations.direct(A)
         assertEquals(dm.id, bobDm.id)
 
         // direct message alice → bob
@@ -93,23 +100,23 @@ class IntegrationTest {
         delay(50) // let the collector subscribe
         val sent = dm.send(text = "Hello Bob")
         assertEquals(MessageStatus.SENT, sent.status)
-        assertEquals("alice", sent.senderId)
+        assertEquals(A, sent.senderId)
         assertTrue((sent.seq ?: 0) > 0)
         assertEquals("Hello Bob", bobNew.await().message.text)
         bobDm.awaitText("Hello Bob")
 
         // read receipt bob → alice
         val receipt = async {
-            withTimeout(10_000) { dm.events.filterIsInstance<ConversationEvent.Receipt>().first { it.userId == "bob" && it.lastReadSeq >= sent.seq!! } }
+            withTimeout(10_000) { dm.events.filterIsInstance<ConversationEvent.Receipt>().first { it.userId == B && it.lastReadSeq >= sent.seq!! } }
         }
         delay(50)
         bobDm.markRead()
         receipt.await()
-        assertEquals(listOf("bob"), dm.readBy(sent.seq!!))
+        assertEquals(listOf(B), dm.readBy(sent.seq!!))
 
         // typing alice → bob
         dm.typing()
-        withTimeout(10_000) { bobDm.typingUserIds.first { "alice" in it } }
+        withTimeout(10_000) { bobDm.typingUserIds.first { A in it } }
 
         // summaries
         val summary = alice.conversations.list().data.first { it.id == dm.id }
@@ -145,11 +152,11 @@ class IntegrationTest {
     @Test fun groupUpdatesAndEdits() = runBlocking {
         assumeTrue(reachable(), "byotalk-server not reachable at $api")
         val env = setupEnv()
-        val alice = chat(env, "alice")
-        val bob = chat(env, "bob")
+        val alice = chat(env, A)
+        val bob = chat(env, B)
         alice.connect()
         bob.connect()
-        val group = alice.conversations.create(listOf("bob"), name = "Team")
+        val group = alice.conversations.create(listOf(B), name = "Team")
         val bobGroup = bob.conversations.get(group.id)
         val m = group.send(text = "first")
         bobGroup.awaitText("first")

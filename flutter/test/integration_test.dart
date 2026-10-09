@@ -21,6 +21,9 @@ Future<Map<String, dynamic>> _json(Future<http.Response> f) async {
 
 /// Fresh org + project through the dashboard sign-in flow (dev magic link); returns the development env id.
 Future<String> createDevEnv() async {
+  // An existing development environment with dev tokens (e.g. on a deployment that never returns devLink).
+  final given = Platform.environment['BYOTALK_ENV'];
+  if (given != null && given.isNotEmpty) return given;
   const jsonH = {'content-type': 'application/json'};
   final email = 'dart-${DateTime.now().millisecondsSinceEpoch}@example.com';
   final link =
@@ -59,6 +62,10 @@ Future<void> main() async {
   final up = await reachable();
   late String env;
   final chats = <ByoTalkChat>[];
+  // Unique per run: with BYOTALK_ENV several runs (and SDKs) share one environment and must not see each other's chats.
+  final run = uuidV4().substring(0, 8);
+  final idA = 'alice-$run', idB = 'bob-$run';
+
   ByoTalkChat chat(String user) {
     final c = ByoTalkChat(env: env, token: ByoTalkChat.devToken(user), baseUrl: api, realtimeUrl: rt);
     chats.add(c);
@@ -83,7 +90,7 @@ Future<void> main() async {
     tearDownAll(() => Future.wait(chats.map((c) => c.disconnect())));
 
     test('direct message, read receipt, typing, offline catch-up', () async {
-      final alice = chat('alice'), bob = chat('bob');
+      final alice = chat(idA), bob = chat(idB);
       final states = <ChatConnectionState>[];
       alice.connectionStates.listen(states.add);
       await Future.wait([alice.connect(), bob.connect()]);
@@ -93,8 +100,8 @@ Future<void> main() async {
           containsAllInOrder(
               [ChatConnectionState.connecting, ChatConnectionState.syncing, ChatConnectionState.connected]));
 
-      final dm = await alice.conversations.direct('bob');
-      final bobDm = await bob.conversations.direct('alice');
+      final dm = await alice.conversations.direct(idB);
+      final bobDm = await bob.conversations.direct(idA);
       expect(bobDm.id, dm.id);
       final bobEvents = <ConversationEvent>[];
       bobDm.events.listen(bobEvents.add);
@@ -104,7 +111,7 @@ Future<void> main() async {
       // Message alice → bob.
       final sent = await dm.send(text: 'Hello Bob');
       expect(sent.status, MessageStatus.sent);
-      expect(sent.senderId, 'alice');
+      expect(sent.senderId, idA);
       expect(sent.seq, greaterThan(0));
       expect(sent.clientMsgId, matches(RegExp(r'^[0-9a-f-]{36}$')));
       await waitFor(() => bobEvents.whereType<MessageNew>().any((e) => e.message.id == sent.id));
@@ -113,13 +120,13 @@ Future<void> main() async {
       // Read receipt reaches alice.
       await bobDm.markRead();
       await waitFor(
-          () => aliceEvents.whereType<ReceiptUpdated>().any((r) => r.userId == 'bob' && r.lastReadSeq >= sent.seq!));
-      expect(dm.readBy(sent.seq!), contains('bob'));
+          () => aliceEvents.whereType<ReceiptUpdated>().any((r) => r.userId == idB && r.lastReadSeq >= sent.seq!));
+      expect(dm.readBy(sent.seq!), contains(idB));
 
       // Typing reaches bob.
       dm.typing();
-      await waitFor(() => bobEvents.whereType<TypingChanged>().any((t) => t.userIds.contains('alice')));
-      expect(bobDm.typingUserIds, ['alice']);
+      await waitFor(() => bobEvents.whereType<TypingChanged>().any((t) => t.userIds.contains(idA)));
+      expect(bobDm.typingUserIds, [idA]);
 
       // Bob goes offline; alice sends; bob catches up on reconnect.
       await bob.disconnect();
@@ -134,10 +141,10 @@ Future<void> main() async {
     });
 
     test('a send made while disconnected flushes once after reconnect', () async {
-      final alice = chat('alice'), bob = chat('bob');
+      final alice = chat(idA), bob = chat(idB);
       await Future.wait([alice.connect(), bob.connect()]);
-      final dm = await alice.conversations.direct('bob');
-      final bobDm = await bob.conversations.direct('alice');
+      final dm = await alice.conversations.direct(idB);
+      final bobDm = await bob.conversations.direct(idA);
       await alice.disconnect();
       final p = dm.send(text: 'queued while offline');
       expect(dm.messages.items.last.status, MessageStatus.sending);
@@ -151,9 +158,9 @@ Future<void> main() async {
     });
 
     test('edit, delete, conversation.updated, summaries', () async {
-      final alice = chat('alice'), bob = chat('bob');
+      final alice = chat(idA), bob = chat(idB);
       await Future.wait([alice.connect(), bob.connect()]);
-      final group = await alice.conversations.create(members: ['bob'], name: 'Team');
+      final group = await alice.conversations.create(members: [idB], name: 'Team');
       final bobGroup = await bob.conversations.get(group.id);
       final m = await group.send(text: 'typo');
       await waitFor(() => bobGroup.messages.get(m.id!));
@@ -175,7 +182,7 @@ Future<void> main() async {
     });
 
     test('presence of a watched user', () async {
-      final alice = chat('alice'), carol = chat('carol');
+      final alice = chat(idA), carol = chat('carol');
       await Future.wait([alice.connect(), carol.connect()]);
       await alice.conversations.direct('carol');
       final seen = <Presence>[];

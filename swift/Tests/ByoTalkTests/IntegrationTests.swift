@@ -25,6 +25,8 @@ private func call(_ url: String, method: String = "GET", body: JSON? = nil, head
 
 /// Creates a fresh org + project through the dashboard sign-in flow (dev magic link); returns its development env id.
 private func createDevEnv(_ api: String) async throws -> String {
+    // An existing development environment with dev tokens (e.g. on a deployment that never returns devLink).
+    if let given = ProcessInfo.processInfo.environment["BYOTALK_ENV"], !given.isEmpty { return given }
     let email = "swift-\(UUID().uuidString.prefix(8).lowercased())@example.com"
     let (link, _) = try await post("\(api)/v1/auth/magic-link", ["email": .string(email)])
     let token = URLComponents(string: link["devLink"]!.string!)!.queryItems!.first { $0.name == "token" }!.value!
@@ -80,6 +82,11 @@ final class IntegrationTests: XCTestCase {
         chats = []
     }
 
+    // Unique per test: with BYOTALK_ENV several runs (and SDKs) share one environment and must not see each other's chats.
+    private let run = UUID().uuidString.prefix(8).lowercased()
+    private var idA: String { "alice-\(run)" }
+    private var idB: String { "bob-\(run)" }
+
     private func chat(_ env: String, _ user: String) throws -> ByoTalkChat {
         let c = try ByoTalkChat(env: env, token: .token(ByoTalkChat.devToken(user)), baseURL: URL(string: api!)!, realtimeURL: URL(string: rt!)!)
         chats.append(c)
@@ -91,14 +98,14 @@ final class IntegrationTests: XCTestCase {
         let env: String
         do { env = try await retrying { try await createDevEnv(api) } } catch { throw XCTSkip("server unreachable at \(api): \(error)") }
 
-        let alice = try chat(env, "alice")
+        let alice = try chat(env, idA)
         try await retrying { try await alice.connect() }
         XCTAssertEqual(alice.connectionState, .connected)
-        let dm = try await alice.conversations.direct("bob")
+        let dm = try await alice.conversations.direct(idB)
 
-        let bob = try chat(env, "bob")
+        let bob = try chat(env, idB)
         try await retrying { try await bob.connect() }
-        let bobDm = try await bob.conversations.direct("alice")
+        let bobDm = try await bob.conversations.direct(idA)
         XCTAssertEqual(bobDm.id, dm.id)
         let bobSaw = Recorder(bobDm)
         let aliceSaw = Recorder(dm)
@@ -106,7 +113,7 @@ final class IntegrationTests: XCTestCase {
         // send → bob receives
         let sent = try await dm.send(text: "Hello Bob")
         XCTAssertEqual(sent.status, .sent)
-        XCTAssertEqual(sent.senderId, "alice")
+        XCTAssertEqual(sent.senderId, idA)
         let seq = try XCTUnwrap(sent.seq)
         XCTAssertGreaterThan(seq, 0)
         try await waitFor("bob gets message.new") {
@@ -123,18 +130,18 @@ final class IntegrationTests: XCTestCase {
         // read receipt
         try await bobDm.markRead()
         try await waitFor("alice sees bob's receipt") {
-            aliceSaw.events.contains { if case .receipt(let r) = $0 { return r.userId == "bob" && r.lastReadSeq >= seq }; return false }
+            aliceSaw.events.contains { if case .receipt(let r) = $0 { return r.userId == idB && r.lastReadSeq >= seq }; return false }
         }
-        XCTAssertEqual(dm.readBy(seq), ["bob"])
+        XCTAssertEqual(dm.readBy(seq), [idB])
 
         // typing
         bobDm.typing()
-        try await waitFor("alice sees bob typing") { dm.typingUserIds == ["bob"] }
+        try await waitFor("alice sees bob typing") { dm.typingUserIds == [idB] }
 
         // presence
-        var presence = alice.presence.watch(["bob"]).makeAsyncIterator()
+        var presence = alice.presence.watch([idB]).makeAsyncIterator()
         let p = await presence.next()
-        XCTAssertEqual(p?.userId, "bob")
+        XCTAssertEqual(p?.userId, idB)
         XCTAssertEqual(p?.online, true)
 
         // edit and delete reach bob
@@ -208,11 +215,11 @@ final class IntegrationTests: XCTestCase {
         let env: String
         do { env = try await retrying { try await createDevEnv(api) } } catch { throw XCTSkip("server unreachable at \(api): \(error)") }
 
-        let alice = try chat(env, "alice")
-        let bob = try chat(env, "bob")
+        let alice = try chat(env, idA)
+        let bob = try chat(env, idB)
         try await retrying { try await alice.connect() }
         try await retrying { try await bob.connect() }
-        let group = try await alice.conversations.create(name: "Team", members: ["bob"], metadata: ["topic": "launch"])
+        let group = try await alice.conversations.create(name: "Team", members: [idB], metadata: ["topic": "launch"])
         for i in 1...3 { try await group.send(text: "m\(i)") }
 
         let bobGroup = try await bob.conversations.get(group.id)
@@ -223,7 +230,7 @@ final class IntegrationTests: XCTestCase {
         try await group.update(name: "Launch team", metadata: ["topic": "ship"])
         try await waitFor("bob gets conversation.updated") { bobGroup.name == "Launch team" && bobGroup.metadata["topic"] == "ship" }
 
-        let fresh = try chat(env, "bob")
+        let fresh = try chat(env, idB)
         let page = try await fresh.conversations.get(group.id)
         page.messages.clear()
         let hasOlder = try await page.loadLatest(limit: 1)

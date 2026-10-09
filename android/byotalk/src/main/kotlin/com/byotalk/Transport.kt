@@ -131,6 +131,8 @@ internal class Transport(
             return fail(ChatException("invalid_request", "Bad realtimeUrl $realtimeUrl", "invalid_request"))
         }
         hello = null
+        // The liveness clock starts with the attempt: a socket still in its TLS/upgrade handshake is not a dead one.
+        lastFrameAt = System.currentTimeMillis()
         // Callbacks are posted to the loop, so they run after `ws` is assigned below.
         ws = http.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) = post(webSocket) {
