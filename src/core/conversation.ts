@@ -3,7 +3,7 @@ import type { Chat } from "./chat.js";
 import { ChatError } from "./errors.js";
 import { MessageStore } from "./store.js";
 import type { Attachment, Json, Member, MemberEvent, Message, UploadInput, Unsubscribe, WireData } from "./types.js";
-import { Emitter, path, uuidv7 } from "./util.js";
+import { backoffDelay, Emitter, path, uuidv7 } from "./util.js";
 
 export interface ServerMessage {
   id: string;
@@ -60,6 +60,7 @@ export class Conversation {
   private held: { seq: number; e: string; d: WireData }[] = [];
   private catchingUp: Promise<void> | null = null;
   private gapFailures = 0;
+  private catchUpTimer: ReturnType<typeof setTimeout> | null = null;
   removed = false;
   /** True while the server has messages older than the oldest one loaded; loadOlder() pages through them. */
   hasOlder = false;
@@ -266,7 +267,7 @@ export class Conversation {
     if (seq <= this.lastSeq) return;
     if (this.catchingUp || seq > this.lastSeq + 1) {
       this.held.push({ seq, e, d });
-      if (!this.catchingUp) void this.catchUp();
+      if (!this.catchingUp) this.catchUp().catch(() => {}); // failures reschedule themselves
       return;
     }
     this.apply(seq, e, d);
@@ -341,7 +342,10 @@ export class Conversation {
       } catch (err) {
         if (err instanceof ChatError && err.code === "resync_required") await this.resync();
         else if (++this.gapFailures >= 3) await this.resync();
-        else throw err;
+        else {
+          this.scheduleCatchUp();
+          throw err;
+        }
       } finally {
         this.catchingUp = null;
       }
@@ -350,6 +354,15 @@ export class Conversation {
       for (const h of held) this.applyEvent(h.seq, h.e, h.d);
     })();
     return this.catchingUp;
+  }
+
+  /** After a failed catch-up the held events would wait for the next live event; retry with backoff instead. */
+  private scheduleCatchUp() {
+    if (this.catchUpTimer || this.removed) return;
+    this.catchUpTimer = setTimeout(() => {
+      this.catchUpTimer = null;
+      if (!this.removed && !this.catchingUp) this.catchUp().catch(() => {});
+    }, backoffDelay(this.gapFailures, 500, 15_000));
   }
 
   /** resync_required: drop the window, reload the latest page, continue from the server's lastSeq. */
