@@ -1,6 +1,6 @@
 {
   "name": "byotalk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "ByoTalk chat SDK: realtime client for web, React Native and Node, voice/video calls, server helpers and the db migrate CLI.",
   "license": "MIT",
   "type": "module",
@@ -19,24 +19,44 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./server": {
-      "types": "./dist/server.d.ts",
-      "import": "./dist/server.js",
-      "require": "./dist/server.cjs"
+      "import": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      },
+      "require": {
+        "types": "./dist/server.d.cts",
+        "default": "./dist/server.cjs"
+      }
     },
     "./react-native": {
-      "types": "./dist/react-native.d.ts",
-      "import": "./dist/react-native.js",
-      "require": "./dist/react-native.cjs"
+      "import": {
+        "types": "./dist/react-native.d.ts",
+        "default": "./dist/react-native.js"
+      },
+      "require": {
+        "types": "./dist/react-native.d.cts",
+        "default": "./dist/react-native.cjs"
+      }
     },
     "./calls": {
-      "types": "./dist/calls.d.ts",
-      "import": "./dist/calls.js",
-      "require": "./dist/calls.cjs"
+      "import": {
+        "types": "./dist/calls.d.ts",
+        "default": "./dist/calls.js"
+      },
+      "require": {
+        "types": "./dist/calls.d.cts",
+        "default": "./dist/calls.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
