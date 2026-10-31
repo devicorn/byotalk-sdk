@@ -50,6 +50,9 @@ export class Transport extends Emitter {
   private lastFrameAt = 0;
   private authRefreshed = false;
   private detachOnline: (() => void) | null = null;
+  // True while open() waits for a token; openGen invalidates an open() that stop() or a newer open() superseded.
+  private opening = false;
+  private openGen = 0;
 
   constructor(
     private readonly opts: { realtimeUrl: string; env: string; sdk: string; auth: AuthManager; WebSocket: WebSocketCtor },
@@ -78,6 +81,8 @@ export class Transport extends Emitter {
   /** Normal close (1000); no reconnect. */
   stop() {
     this.wanted = false;
+    this.openGen++;
+    this.opening = false;
     this.clearTimers();
     this.detachOnline?.();
     this.detachOnline = null;
@@ -93,6 +98,8 @@ export class Transport extends Emitter {
   reconnectNow() {
     if (!this.wanted || this.state === "failed") return;
     if (this.state === "connected" || this.state === "syncing" || this.state === "connecting") return;
+    // A token fetch or a socket handshake is already under way: a second open() would leak a socket.
+    if (this.opening || this.ws) return;
     this.attempt = 0;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
@@ -138,14 +145,24 @@ export class Transport extends Emitter {
   }
 
   private async open() {
-    if (!this.wanted) return;
+    if (!this.wanted || this.opening) return;
+    const gen = ++this.openGen;
+    this.opening = true;
     this.setState(this.attempt === 0 && this.state !== "reconnecting" ? "connecting" : "reconnecting");
     let token: string;
     try {
       token = await this.opts.auth.get();
     } catch (err) {
-      return this.fail(err instanceof ChatError ? err : new ChatError({ code: "token_invalid", type: "authentication", message: String(err) }));
+      if (gen !== this.openGen) return;
+      this.opening = false;
+      const ce = err instanceof ChatError ? err : new ChatError({ code: "token_provider", type: "network", message: String(err) });
+      // Only an explicit auth error is final; a provider that failed (offline, 5xx) is retried with backoff.
+      if (ce.type === "authentication") return this.fail(ce);
+      this.emit("error", ce);
+      return this.scheduleReconnect();
     }
+    if (gen !== this.openGen) return;
+    this.opening = false;
     if (!this.wanted) return;
     const url = `${this.opts.realtimeUrl.replace(/\/$/, "")}/v1?env=${encodeURIComponent(this.opts.env)}&sdk=${encodeURIComponent(this.opts.sdk)}`;
     let ws: WebSocketLike;
@@ -243,7 +260,10 @@ export class Transport extends Emitter {
           this.authRefreshed = true;
           this.opts.auth.refresh().then(
             () => this.scheduleReconnect(0),
-            (e) => this.fail(e instanceof ChatError ? e : err("token_invalid", "authentication")),
+            (e) => {
+              if (e instanceof ChatError && e.type === "authentication") return this.fail(e);
+              this.scheduleReconnect();
+            },
           );
           return;
         }
@@ -288,6 +308,8 @@ export class Transport extends Emitter {
   private fail(err: ChatError) {
     this.wanted = false;
     this.clearTimers();
+    this.detachOnline?.();
+    this.detachOnline = null;
     this.setState("failed");
     this.emit("error", err);
   }
