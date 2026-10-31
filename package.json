@@ -61,7 +61,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "byotalk": "./dist/cli.js"
+    "byotalk": "dist/cli.js"
   },
   "scripts": {
     "build": "tsup",
