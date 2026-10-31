@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1
+
+### Fixed
+
+- A tokenProvider that fails while reconnecting (offline, 5xx) no longer ends the connection: it is retried with backoff. Only an explicit authentication error sets the state to `failed`.
+- A failed catch-up of a conversation no longer causes an unhandled rejection; held live events are retried with backoff.
+- A `message.send` that times out on an open socket is resent with backoff (same `clientMsgId`) instead of waiting for the next reconnect.
+- `unreadCount` is no longer counted twice after a reconnect.
+- The state no longer becomes `connected` when the socket dropped during the post-hello sync.
+- `reconnectNow()` while a connection attempt is under way no longer opens a second socket; `failed` removes the online/pagehide listeners.
+- A `tokenProvider` that returns a secret key (`sk_`) is rejected, like a secret key passed as `token`.
+- `exports`: the `require` condition now points at the `.d.cts` typings.
+
 ## 0.3.0
 
 ### Added

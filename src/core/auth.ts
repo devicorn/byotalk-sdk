@@ -2,6 +2,8 @@
 import { ChatError } from "./errors.js";
 import { tokenExpiry } from "./util.js";
 
+export const SECRET_KEY_MESSAGE = "That is a secret key: it belongs on your server. Pass a user token (ChatServer.createToken) instead";
+
 export type TokenSource = string | (() => Promise<string>);
 
 export class AuthManager {
@@ -38,6 +40,8 @@ export class AuthManager {
     this.inflight ??= (this.source as () => Promise<string>)()
       .then((t) => {
         if (typeof t !== "string" || !t) throw new ChatError({ code: "token_invalid", type: "authentication", message: "tokenProvider returned no token" });
+        // A tokenProvider that hands out a secret key would ship it to the browser or the app.
+        if (t.startsWith("sk_")) throw new ChatError({ code: "invalid_request", type: "authentication", message: SECRET_KEY_MESSAGE });
         this.set(t);
         return t;
       })

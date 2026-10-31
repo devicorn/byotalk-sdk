@@ -1,15 +1,15 @@
 // The client: connection machine, sync engine, outbox, receipts, presence (docs/09-SDK-DESIGN.md §3–4).
-import { AuthManager, type TokenSource } from "./auth.js";
+import { AuthManager, SECRET_KEY_MESSAGE, type TokenSource } from "./auth.js";
 import { Conversation, toMessage, type ServerConversation, type ServerMessage } from "./conversation.js";
 import { ChatError } from "./errors.js";
 import { memoryPersistence } from "./persistence.js";
 import { RestClient } from "./rest.js";
 import { Transport, type WebSocketCtor } from "./transport.js";
 import type { ConnectionState, ConversationSummary, Json, Message, Page, PersistenceAdapter, Presence, SearchHit, Unsubscribe, WireData, WireFrame } from "./types.js";
-import { Emitter, path } from "./util.js";
+import { backoffDelay, Emitter, path } from "./util.js";
 import { Uploader } from "./uploader.js";
 
-export const SDK_VERSION = "0.3.0";
+export const SDK_VERSION = "0.3.1";
 
 export interface ChatOptions {
   env: string;
@@ -40,6 +40,9 @@ class Outbox {
   private waiters = new Map<string, { resolve: (m: Message) => void; reject: (e: ChatError) => void }>();
   private failedEntries = new Map<string, OutboxEntry>();
   private flushing = false;
+  private inflight = new Set<string>();
+  private attempts = new Map<string, number>();
+  private resendTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(private readonly chat: Chat) {}
 
@@ -87,8 +90,11 @@ class Outbox {
     if (Date.now() - e.createdAt > OUTBOX_TTL_MS) {
       return this.failed(e, new ChatError({ code: "expired", type: "invalid_request", message: "Message was not sent within 24 hours" }));
     }
+    if (this.inflight.has(e.clientMsgId)) return;
+    this.inflight.add(e.clientMsgId);
     try {
       const ack = await this.chat.transport.request<{ clientMsgId: string; id: string; seq: number; createdAt: string }>("message.send", e.payload);
+      this.attempts.delete(e.clientMsgId);
       this.entries.delete(e.clientMsgId);
       void this.persist();
       conv?.messages.reconcile(e.clientMsgId, ack);
@@ -116,13 +122,29 @@ class Outbox {
       // Retryable problems keep the message pending; it is resent after the next hello.
       if (ce.retryable || ce.code === "network" || ce.code === "timeout") {
         if (ce.code === "rate_limited" && ce.retryAfterMs) setTimeout(() => this.chat.transport.isOpen && void this.sendOne(e), ce.retryAfterMs);
+        // A timeout on a socket that stays open gets no hello to resend it: retry with backoff (same clientMsgId, the server dedupes).
+        else if (ce.code === "timeout") this.scheduleResend(e);
         return;
       }
       this.failed(e, ce);
+    } finally {
+      this.inflight.delete(e.clientMsgId);
     }
   }
 
+  private scheduleResend(e: OutboxEntry) {
+    if (this.resendTimers.has(e.clientMsgId)) return;
+    const attempt = this.attempts.get(e.clientMsgId) ?? 0;
+    this.attempts.set(e.clientMsgId, attempt + 1);
+    const timer = setTimeout(() => {
+      this.resendTimers.delete(e.clientMsgId);
+      if (this.entries.has(e.clientMsgId) && this.chat.transport.isOpen) void this.sendOne(e);
+    }, backoffDelay(attempt, 1_000, 30_000));
+    this.resendTimers.set(e.clientMsgId, timer);
+  }
+
   private failed(e: OutboxEntry, err: ChatError) {
+    this.attempts.delete(e.clientMsgId);
     this.entries.delete(e.clientMsgId);
     void this.persist();
     const conv = this.chat.cached(e.cid);
@@ -209,7 +231,7 @@ export class Chat {
       });
     }
     if (typeof opts.token === "string" && opts.token.startsWith("sk_")) {
-      throw new ChatError({ code: "invalid_request", type: "invalid_request", message: "That is a secret key: it belongs on your server. Pass a user token (ChatServer.createToken) instead" });
+      throw new ChatError({ code: "invalid_request", type: "invalid_request", message: SECRET_KEY_MESSAGE });
     }
     this.env = opts.env;
     const auth = new AuthManager(opts.token);
@@ -304,14 +326,14 @@ export class Chat {
     this.transport.setState("syncing");
     try {
       await Promise.all([this.runSync(), this.outbox.flush(), this.rewatchPresence(), this.rejoinLive()]);
-      this.transport.setState("connected");
-      for (const w of this.connectWaiters.splice(0)) w.resolve();
     } catch (err) {
       this.log(2, "sync failed", err instanceof ChatError ? err.code : String(err));
       // The socket is up; serve live events and let the next hello retry the sync.
-      this.transport.setState("connected");
-      for (const w of this.connectWaiters.splice(0)) w.resolve();
     }
+    // The socket may have dropped while syncing: the reconnect's hello runs this again and resolves the waiters.
+    if (!this.transport.isOpen) return;
+    this.transport.setState("connected");
+    for (const w of this.connectWaiters.splice(0)) w.resolve();
   }
 
   private async runSync() {
@@ -325,8 +347,9 @@ export class Chat {
       if (s) this.summaries.set(c.id, { ...s, lastSeq: c.lastSeq, unreadCount: c.unreadCount });
       const conv = this.convs.get(c.id);
       if (conv) {
-        conv.unreadCount = c.unreadCount;
         if (c.lastSeq > conv.lastSeq) await conv.catchUp().catch(() => {});
+        // After the catch-up: replayed message.new events already bumped the count, the server's value is the truth.
+        conv.unreadCount = c.unreadCount;
       }
     }
     for (const id of r.removed) this.convs.get(id)?.markRemoved();
